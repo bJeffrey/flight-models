@@ -42,8 +42,9 @@ OpenDIS speedup. Existing code is reusable evidence, not a runtime dependency.
 | Runtime/time adapter | Validated configuration, lifecycle, health, simulation event ordering and output scheduling under ai-bm-sim time authority. |
 
 `route-planning` retains route search, intermediate geometry, feasibility,
-arrival constraints and route-change/splice policy. `mission-manager` owns
-accepted plan/version and mission lifecycle. `execution-authority` owns permission
+arrival constraints and route-change/splice policy. `single-mission-manager`
+owns accepted plan/version and per-mission lifecycle. `multi-mission-manager`
+owns portfolio admission and scheduling. `execution-authority` owns permission
 to activate/continue and revocation. Guidance must enforce the applicable vehicle
 limits locally; external permission never bypasses those limits. The exact
 authorization carrier is pending the ecosystem contract review, not an invented
@@ -143,7 +144,7 @@ configuration/provenance; it does not establish realistic navigation acceptance.
 Generate local navigation for each simulated platform, but publish/share PRDs only
 for the configured reporting set. Red physical truth does not become a friendly
 operational PRD merely because it exists in the same SoA. Local own-platform
-navigation feeds local services; off-platform delivery follows comms-router policy.
+navigation feeds local services; off-platform delivery follows comms-models policy.
 Retain platform identity and source timestamp through impairment/reordering;
 missing or stale PRDs cannot be replaced with backend physical state. A standalone
 PRD relay that bypasses recipient routing is not part of the target topology.
