@@ -171,6 +171,20 @@ validity and publication; monotonic wall time measures scheduling/health. Fixed
 scenario-step results must be independent of wall pacing. Preserve source times,
 identities and epoch/reset semantics; never stamp stale state with a new time.
 
+### Shared buses and flight timing (2026-10-21)
+
+`ai-bm-sim` remains the sole scenario-clock authority. Flight-models consumes the
+authoritative Protobuf/NATS `SimTimeTick` run/epoch/tick contract and the existing
+scenario interval; it does not create per-entity clocks or integrate motion from
+wall time. Elapsed scenario time starts at zero: a turn at 30 s remains an
+elapsed-time command. Map to the scenario UTC origin only for standard absolute
+DIS/UCI timestamp fields. A restored epoch retains its restored elapsed time and
+action schedule. Runtime integration belongs to FM-CONTRACT-1/FM-RUNTIME-1 and follows
+the [shared bus and timing decision](/home/jeffs/git/ai-bm-sim/docs/architecture/ecosystem_message_architecture.md#shared-buses-and-flight-timing-2026-10-21).
+Preserve the event-driven clock: global tick acknowledgements are not a target
+requirement, and `SimStepRequest`/`SimStepCompletion` remain limited to the
+explicit regression harness.
+
 ## Implementation Checklist
 
 - [ ] **FM-CONTRACT-1 — flight-models:** inventory reusable SuperCell adapters,
@@ -178,7 +192,11 @@ identities and epoch/reset semantics; never stamp stale state with a new time.
   model profile, guidance API and adapter field/source table, including DIS
   identity/time/frame/dead-reckoning semantics and PRD navigation covariance.
   Include SoA index/lifecycle rules, emitter-source ownership and carrier audit,
-  navigation profile semantics and configured PRD reporting membership.
+  navigation profile semantics and configured PRD reporting membership. Freeze
+  the `SimTimeTick` run/epoch/tick and scenario-interval mapping here; inspect
+  shared `math` primitives before selecting matrix/vector optimization libraries.
+  Coordinate source-completeness/readiness and epoch fencing with sensor-models
+  and SIM-TIME-FM-1; a tick or separate marker cannot prove DIS/UDP arrival.
   Requires existing boundary docs; deliver schema-valid nominal and rejection
   fixtures. Validate units, correlation and lifecycle cases. Stop before runtime
   implementation; coordinate authorization mapping with ECO-FM-CONTRACT-1.
@@ -222,11 +240,15 @@ identities and epoch/reset semantics; never stamp stale state with a new time.
   stale, duplicate, reordered and unauthorized inputs with focused mocked ports.
   Stop before live ecosystem acceptance.
 - [ ] **FM-PERF-1 — flight-models:** provide a bounded benchmark wrapper for
-  fixed workloads at 1/4/16/64 platforms with declared emitter counts/event rates,
+  configurable workloads: 1/4/16/64-platform smoke cases followed by declared
+  representative large-scenario counts, with emitter counts/event rates,
   separating SoA guidance/dynamics, emitter events, navigation, serialization/
   publication and receiver latency. Record allocations, memory, worker budget,
   profile/revision/hardware,
   warmup, steady-state median/p95/p99, achieved rate, queues/drops and error counts.
+  Compare scalar/reference and matrix/vector kernels under declared tolerances
+  and thread budgets; inspect shared math and AST batching practice before adding
+  another numerical dependency. Kernel speed alone is not end-to-end FTRT.
   Compare equivalent fidelity backends; never label Kinematic timing as JSBSim.
   Establish required rates/tolerances before acceptance. Validate wrapper smoke;
   leave compute-heavy runs user-run and record capacity as unvalidated until then.
@@ -249,3 +271,13 @@ SoA batching requirement and flight-models-owned navigation/PRD generation;
 no implementation or runtime acceptance is claimed. Next executable local slice:
 FM-CONTRACT-1, coordinated with ECO-FM-CONTRACT-1. SuperCell remains available;
 the master plan owns selection, live comparison and eventual retirement.
+
+Checkpoint 2026-10-21: flight-models owns scalable physical kinematics/truth,
+including batched SoA state and benchmark-led use of existing matrix/math
+primitives, plus the linked OpenDIS EntityState UDP codec, modeled navigation
+error and UCI PRD published to the owning platform's ASB for OWP consumption.
+Comms-models owns
+offboard dissemination; flight-models does not add flight communications logic.
+The PRD is reported navigation, not a renamed physical truth state. The shared
+bus and timing decision above is authoritative; the wire contract remains part
+of FM-CONTRACT-1. See the [planning index](README.md).
