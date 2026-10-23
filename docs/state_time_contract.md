@@ -29,8 +29,12 @@ geodetic/ECEF/ENU conversion and NED rotation; `math/core/types.hpp` defines the
 row-major matrix convention. The similarly named legacy
 `include/coordinates/{quaternions,rotations}.hpp` and
 `include/tracking_math/{covariance,fusion_primitives}.hpp` are empty placeholders,
-not reusable implementations. No matrix backend or quaternion API is selected by
-this contract. Qualify numerical libraries when adding actual batched kernels.
+not reusable implementations. Numerical backends are standard C++, Eigen and
+Intel MKL behind a stable developer-facing API, following the AST reference in
+the owning plan. No backend is yet implemented/qualified in flight-models.
+Keep efficient small-update and large-batch paths separate from backend choice;
+benchmark their crossover when adding actual kernels. No quaternion API is
+selected by this contract.
 
 ## Clock and scheduling
 

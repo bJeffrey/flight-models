@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Flight-model storage resource policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "description",
+    "max_entities",
+    "max_batch_updates",
+    "profiles"
+  ],
+  "properties": {
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_entities": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum live physical entities; allocate SoA columns once at construction."
+    },
+    "max_batch_updates": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Reusable scratch capacity for one update batch; not an automatic scalar/batch threshold."
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Motion profile files relative to this configuration directory; registry indices follow explicit array order."
+    }
+  }
+}

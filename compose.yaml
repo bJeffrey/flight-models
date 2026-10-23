@@ -6,3 +6,10 @@ services:
     working_dir: /src
     volumes:
       - .:/src
+      # Shared convention-controlled types/math stay owned by the math repository.
+      - type: bind
+        source: ${FLIGHT_MATH_REPO:-../math}
+        target: /math
+        read_only: true
+        bind:
+          create_host_path: false

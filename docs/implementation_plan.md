@@ -100,6 +100,54 @@ read half-updated SoA columns. Record source time and output age independently o
 send time. Benchmark numerical kernels, event generation, encoding and delivery
 separately, with scalar/reference parity and the same fidelity/workload.
 
+### Numerical backends and population-aware execution (2026-10-23)
+
+User-selected backend candidates are Eigen, Intel MKL and standard C++. Follow
+AST's abstraction pattern: stable backend-independent domain/data-view APIs with
+one numerical implementation selected by the maintained CMake/container build.
+Flight-model developers do not include backend-specific types or select a
+library at each call site. SoA storage, identity/slot mapping and physical/model
+semantics remain independent of the selected numerical backend. Keep flight code
+independent of AST's tracker/plugin implementation; reusable mathematical kernels
+belong in shared math when actual consumers justify them.
+
+AST references inspected for this decision:
+
+- `ast/include/plugins/propagator/la.h` and `la_batch_rw.h`: stable matrix/batch
+  and sparse-subset APIs; implementations live under
+  `ast/src/plugins/propagator/la/`. CMake and Docker's `BACKEND` build argument
+  choose `std`, `eigen` or `mkl`; selection is not per-call runtime dispatch.
+- `ast/src/plugins/filter/passive_pf/family_pf_backend.cpp`: serial scoring for
+  the promoted 1,200-particle workload because measured OpenMP dispatch cost
+  outweighed its benefit. Sparse covariance subset implementations likewise
+  retain serial paths for small candidate sets.
+- `ast/include/plugins/filter/passive_pf/tempered_smc.h` and corresponding source:
+  configured batched rejuvenation/likelihood blocks. The migration-map benchmark
+  records scalar/batch comparisons at 4,096 particles; these are batching
+  evidence, not a measured flight-model crossover.
+
+The inspected AST paths do not implement an automatic update-population
+threshold. Flight-models must explicitly support different execution paths for
+small and large workloads: direct indexed/scalar updates on the SoA for small
+sets, and compatible contiguous batches for sufficiently large sets. Backend and
+scalar/batch path are separate choices; standard C++ may implement batch kernels,
+and a selected Eigen/MKL backend must retain an efficient small-work path.
+
+Count actual active/due ownship and target updates per compatible kernel/model
+cohort, not total scenario entities or allocated capacity. Preserve stable
+identity/order when compacting or gathering subsets, and reuse packing/scratch
+storage. Include gathering, scatter and dispatch costs when comparing paths.
+Both paths implement the same model and event schedule; identities/order remain
+exact, while numerical results meet declared tolerances.
+
+Calibrate any crossover using flight-model workloads on the selected backend and
+container CPU/thread budget. Put the selected threshold/resource policy in
+version-controlled execution configuration, separate from vehicle motion limits;
+record its benchmark provenance. No threshold is selected by this documentation
+and no AST particle count/block width is imported as one. Qualify small-count
+latency as well as large-count throughput and bound backend/internal threading
+within the same process resource budget.
+
 ### Emitter Boundary
 
 `flight-models` owns the target batched emitter-source state/schedule attached to
@@ -203,8 +251,10 @@ explicit regression harness.
   Requires existing boundary docs; deliver schema-valid nominal and rejection
   fixtures. Validate units, correlation and lifecycle cases. Stop before runtime
   implementation; coordinate authorization mapping with ECO-FM-CONTRACT-1.
-- [ ] **FM-SOA-1 — flight-models:** after FM-CONTRACT-1, establish typed SoA
-  columns, stable identity/index mapping, model batches, coherent snapshots and
+- [x] **FM-SOA-1 — flight-models:** after the bounded state/profile portion of
+  FM-CONTRACT-1 accepted below, establish typed SoA
+  columns, stable identity/index mapping, backend-independent data views,
+  small indexed-update and large batch access, coherent snapshots and
   bounded scratch/event storage. Validate active masks, slot reuse, spawn/remove,
   reset and deterministic ordering with scalar/reference fixtures. Stop before
   introducing unvalidated vectorized model behavior or transport dependencies.
@@ -388,3 +438,116 @@ or ideal test profiles where appropriate rather than inventing aircraft or
 navigation performance claims. Then implement FM-SOA-1 and bounded dynamics;
 OpenDIS and modeled PRD adapters follow as recorded above. New epoch/restore
 handling remains deferred until after SuperCell deprecation.
+
+
+### Bounded model and ordinary-run input checkpoint (2026-10-23)
+
+The local state/profile contract required by FM-SOA-1 is accepted. Added the
+[initial motion/input contract](motion_input_contract.md), version-controlled
+`config/profiles/synthetic_fixed_wing.json` and strict
+`config/motion_profile.schema.json`, with typed C++ loading through
+`include/flight_models/motion_profile.h` and `src/motion_profile.cpp`.
+The configuration library is transport-independent and builds without a process
+runtime. There are no hidden tuning defaults or alternative development-phase
+configurations.
+
+The initial model is explicitly synthetic, no-wind bounded kinematics. Its
+execution envelope matches the existing generic route-planning test envelope;
+copying those values does not qualify an aircraft or implement the eventual
+planner-subset distribution. Ground-horizontal speed and independent HAE rates,
+shortest-turn/clockwise tie semantics, swept waypoint capture, scheduled-event
+ordering, explicit midpoint integration and bounded work are now specified.
+DIS and PRD schedules remain independent of each other and clock/substep spacing.
+Navigation is explicitly `ideal_test`; nonideal modeling remains FM-NAV-PRD-1.
+
+Ordinary-run sensor admission uses actual admitted target/receiver geometry and
+receiver PRD under sensor-owned freshness/queue settings. The initial selected
+missing-input behavior is the existing `complete_without_output`: suppress the
+incomplete collection and count it, while ready sets proceed. No clock receipt
+or publication marker is treated as delivery proof; no new watermark protocol,
+all-platform barrier or unbounded wait is introduced. End-to-end readiness and
+suppression counters remain part of runtime/performance acceptance. Sensor
+runtime clock-adapter integration is not implemented by this contract slice.
+
+Validation uses the maintained `./test.sh` Docker workflow: both the new motion
+profile loader test and existing state/time contract test pass, with C++17
+warnings treated as errors
+([log](../logs/20261023/motion-profile-tests-final.log)). Cases include unknown
+model/navigation/fields, missing settings, zero/negative values, ordered bounds,
+independent cadences, exact/ceil work budgets, exact integer-token requirements,
+INT64_MAX retention and unsigned overflow rejection. Independent focused review
+found no material defect. No dynamics, OpenDIS codec or throughput result is
+claimed; UCI schema fixtures were unchanged and their prior validation remains
+applicable.
+
+Exact next development slice is **FM-SOA-1**: contiguous typed numerical columns,
+stable platform identity/slot generation mapping, model batches, coherent snapshot
+extraction and bounded scratch storage. Validate spawn/remove/slot reuse and
+fresh-run reset deterministically before implementing motion kernels. Detailed
+route constraints, operational authorization and emitter-source transfer still
+gate their respective adapters/live replacement, not transport-free storage.
+The complete FM-CONTRACT-1/ECO-FM-CONTRACT-1 gates remain open for those integration
+contracts. New epoch/restore work remains deferred until after SuperCell
+deprecation.
+
+
+### AST backend/batching reference checkpoint (2026-10-23)
+
+The SoA slice now explicitly preserves the user-required numerical abstraction
+and small/large update distinction; see the backend/population subsection above.
+This is a design refinement for FM-SOA-1 and subsequent kernels, not implemented
+flight-model backend support or benchmark acceptance. AST's code, rather than its
+stale `docs/la_overview.txt` build/timing summary, supplies the concrete reference.
+Next remains FM-SOA-1 storage/views/lifecycle, followed by the motion kernels and
+measured backend/path qualification. Epoch work remains deferred.
+
+
+### Bounded SoA storage checkpoint (2026-10-23)
+
+FM-SOA-1's initial physical-state storage is implemented in
+`include/flight_models/state_store.h` and `src/state_store.cpp`; see the
+[storage contract](state_storage.md). It has separate numerical component columns,
+packed row-major attitude, desired controls/source times, active/mode/profile
+metadata and generation handles. Shared types come from `math::math` through the
+maintained container mount; the developer API exposes no numerical-backend types.
+Read-only indexed live views and reusable packed StateBatch scratch support small
+explicit sets and full compatible cohorts without imposing a crossover threshold.
+
+Staged updates validate before changing live values. Revisions invalidate stale
+prepared work, failed gathers invalidate their destination, and snapshots own
+canonical ID-ordered rows with the original source times. Slot reuse and fresh
+clear cannot alias old handles; a preallocated free-slot heap avoids quadratic
+startup slot scans. Mode filtering distinguishes occupied fixed/moving/disabled
+entities. Calls are single-owner serialized; publishers consume independent
+snapshots rather than borrowing changing columns.
+
+`config/storage_policy{,.schema}.json` records explicit example capacities and
+profile registry order. Tests validate that policy, while a future runtime adapter
+will perform actual deployment loading. There are no hidden constructor bounds.
+Profile limits remain outside the hot per-entity columns. Emitter-event and
+nonideal-navigation storage is added with its owning module when those consumers
+exist; no speculative source-event schema was introduced here.
+
+Changed paths: state-store public API/source, storage policy/schema, state-store
+behavior tests plus test-only allocation probe, CMake/shared-math Compose mount,
+README/index and storage reference. No dynamics kernel, Eigen/MKL backend,
+scalar/batch threshold, OpenDIS adapter or runtime was added.
+
+Validation: maintained `./test.sh` builds C++17 with warnings as errors and passes
+all three test executables ([log](../logs/20261023/soa/tests.log)). Storage cases
+exercise capacity/profile bounds, duplicate identity, stale generations through
+remove/reuse/clear, lowest-free-slot order, profile/mode metadata, all-or-nothing
+batch rejection, decreasing source-time rejection, stale/foreign batches,
+retained snapshots, untouched source times and 256-row scalar/batch data
+agreement. A test-only allocator rejects heap allocation during warmed gather,
+commit and snapshot cycles with long identity strings. Lifecycle/initial-string
+allocations are outside that assertion; this is not a throughput claim.
+Independent review found no material correctness defect; its cold-population
+scan concern was removed with the reserved free-slot heap.
+
+Exact next slice: **FM-DYNAMICS-1**, implementing and testing bounded no-wind
+motion/waypoint kernels against this state/profile contract. Keep the same API
+for standard C++, Eigen and MKL implementation choices; qualify backend and
+population crossover with actual kernels and packing costs before configuring
+production dispatch. New epoch/restore work remains deferred until after
+SuperCell deprecation.

@@ -1,0 +1,163 @@
+{
+  "type": "object",
+  "description": "Initial bounded synthetic model profile. JSON Schema checks structure; the C++ loader also checks ordered limits and integration work bounds.",
+  "additionalProperties": false,
+  "required": [
+    "profile_id",
+    "description",
+    "model",
+    "navigation",
+    "flight_envelope",
+    "guidance",
+    "integration",
+    "publication"
+  ],
+  "properties": {
+    "profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "const": "bounded_kinematic_no_wind",
+      "description": "Synthetic point kinematics, independent horizontal speed and vertical-rate limits; no aerodynamic envelope claim."
+    },
+    "navigation": {
+      "const": "ideal_test",
+      "description": "Explicit test-only exact navigation with zero covariance; realism is not established."
+    },
+    "flight_envelope": {
+      "type": "object",
+      "description": "Flight-model-owned bounds; corresponding planner profile must not permit a wider envelope.",
+      "additionalProperties": false,
+      "required": [
+        "min_speed_mps",
+        "max_speed_mps",
+        "max_acceleration_mps2",
+        "max_deceleration_mps2",
+        "max_turn_rate_radps",
+        "max_climb_rate_mps",
+        "max_descent_rate_mps",
+        "min_altitude_hae_m",
+        "max_altitude_hae_m"
+      ],
+      "properties": {
+        "min_speed_mps": {
+          "type": "number",
+          "description": "Minimum horizontal ground speed, m/s.",
+          "exclusiveMinimum": 0
+        },
+        "max_speed_mps": {
+          "type": "number",
+          "description": "Maximum horizontal ground speed, m/s; not total airspeed.",
+          "exclusiveMinimum": 0
+        },
+        "max_acceleration_mps2": {
+          "type": "number",
+          "description": "Maximum increase in horizontal ground speed, m/s^2.",
+          "exclusiveMinimum": 0
+        },
+        "max_deceleration_mps2": {
+          "type": "number",
+          "description": "Maximum decrease in horizontal ground speed, m/s^2.",
+          "exclusiveMinimum": 0
+        },
+        "max_turn_rate_radps": {
+          "type": "number",
+          "description": "Maximum heading rate, radians/s clockwise from north.",
+          "exclusiveMinimum": 0
+        },
+        "max_climb_rate_mps": {
+          "type": "number",
+          "description": "Maximum increase in WGS-84 HAE altitude, m/s.",
+          "exclusiveMinimum": 0
+        },
+        "max_descent_rate_mps": {
+          "type": "number",
+          "description": "Maximum decrease in WGS-84 HAE altitude, positive m/s magnitude.",
+          "exclusiveMinimum": 0
+        },
+        "min_altitude_hae_m": {
+          "type": "number",
+          "description": "Minimum WGS-84 height above ellipsoid, m."
+        },
+        "max_altitude_hae_m": {
+          "type": "number",
+          "description": "Maximum WGS-84 height above ellipsoid, m."
+        }
+      }
+    },
+    "guidance": {
+      "type": "object",
+      "description": "Geometric waypoint guidance; timed constraints are rejected until supported.",
+      "additionalProperties": false,
+      "required": [
+        "waypoint_capture_radius_m"
+      ],
+      "properties": {
+        "waypoint_capture_radius_m": {
+          "type": "number",
+          "description": "3D waypoint capture distance in ECEF metres; capture includes intersection during a substep.",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "integration": {
+      "type": "object",
+      "description": "Bound numerical work without wall-clock pacing dependencies.",
+      "additionalProperties": false,
+      "required": [
+        "max_substep_ns",
+        "max_interval_ns",
+        "max_substeps_per_interval"
+      ],
+      "properties": {
+        "max_substep_ns": {
+          "type": "integer",
+          "description": "Maximum elapsed simulation nanoseconds per numerical substep; split earlier at events/output deadlines.",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "max_interval_ns": {
+          "type": "integer",
+          "description": "Largest admitted advancing clock interval, simulation nanoseconds.",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "max_substeps_per_interval": {
+          "type": "integer",
+          "description": "Work bound including extra splits; exhaust before publishing a partial interval.",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "description": "Independent schedules starting with an initial t=0 sample; enabled/reporting identities are supplied by scenario installation.",
+      "additionalProperties": false,
+      "required": [
+        "dis_period_ns",
+        "prd_period_ns"
+      ],
+      "properties": {
+        "dis_period_ns": {
+          "type": "integer",
+          "description": "Periodic physical DIS sample spacing in scenario nanoseconds.",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "prd_period_ns": {
+          "type": "integer",
+          "description": "Periodic local navigation report spacing in scenario nanoseconds.",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        }
+      }
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

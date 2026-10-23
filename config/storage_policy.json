@@ -1,0 +1,8 @@
+{
+  "description": "Initial storage resource policy; capacity is a configured ceiling, not a measured fleet-throughput claim. Backend/path thresholds will be added with qualified kernels.",
+  "max_entities": 10000,
+  "max_batch_updates": 10000,
+  "profiles": [
+    "profiles/synthetic_fixed_wing.json"
+  ]
+}
