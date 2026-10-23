@@ -6,7 +6,8 @@ Replace SuperCell in the active ecosystem with a focused `flight-models` runtime
 Preserve the current tabular MARL policy and existing operational interfaces.
 SuperCell remains a selectable migration/reference backend until replacement
 acceptance; do not remove it or start two publishers for the same platform.
-This repository is initially empty apart from planning documentation.
+The initial repository contained planning documentation only. The first contract
+slice below adds test-only C++ validation; no runtime is implemented.
 
 The ecosystem master plan owns cross-repository gates. This document owns only
 flight-models implementation and local acceptance. Follow the workspace
@@ -195,8 +196,10 @@ explicit regression harness.
   navigation profile semantics and configured PRD reporting membership. Freeze
   the `SimTimeTick` run/epoch/tick and scenario-interval mapping here; inspect
   shared `math` primitives before selecting matrix/vector optimization libraries.
-  Coordinate source-completeness/readiness and epoch fencing with sensor-models
-  and SIM-TIME-FM-1; a tick or separate marker cannot prove DIS/UDP arrival.
+  Coordinate ordinary-run source-completeness/readiness with sensor-models and
+  SIM-TIME-FM-1; a tick or separate marker cannot prove DIS/UDP arrival. Preserve
+  existing run/epoch/tick fields; new cross-service epoch/restore handling is
+  deferred until after SuperCell deprecation and does not block this gate.
   Requires existing boundary docs; deliver schema-valid nominal and rejection
   fixtures. Validate units, correlation and lifecycle cases. Stop before runtime
   implementation; coordinate authorization mapping with ECO-FM-CONTRACT-1.
@@ -281,3 +284,107 @@ offboard dissemination; flight-models does not add flight communications logic.
 The PRD is reported navigation, not a renamed physical truth state. The shared
 bus and timing decision above is authoritative; the wire contract remains part
 of FM-CONTRACT-1. See the [planning index](README.md).
+
+
+### Initial executable contract checkpoint (2026-10-23)
+
+FM-CONTRACT-1 is in progress. The [state/time contract](state_time_contract.md)
+fixes local ECEF/SI physical state, row-major body-FRD orientation, elapsed-time
+scheduling and existing SimTimeTick interval/lifecycle interpretation. Its schemas
+and nominal specimens describe acceptance inputs, not a new runtime protocol.
+The C++17 checker covers the known equatorial level-east basis, invalid rotations
+and identities, 30-second scheduling, pause/resume, duplicate delivery, restore
+boundary and stale-epoch/interval/overflow rejection. This is test-only reference
+logic: replace its clock checker with production adapter calls at FM-RUNTIME-1
+while retaining the same specimen inputs. It does not prove runtime quiescence
+or restored action-state behavior.
+
+The [adapter audit](adapter_contract.md) records reusable SuperCell DIS/UCI,
+route-planning and sensor consumer evidence. Implemented shared geodetic/frame
+math is available; several similarly named legacy math headers are empty and
+must not be mistaken for implementations. Matrix backend selection remains tied
+to real batched-kernel validation. Python was not added to this repository.
+
+Sensor-models consumes DIS physical truth for targets and sensor hosts plus PRD
+reported navigation/covariance for the configured receivers. Local PRDs use the
+owning platform ASB; selected offboard reports use comms-models. Physical truth
+must not replace missing navigation. The shared sensor simulation process may
+serve several platform ASBs without granting operational services global PRD
+access.
+
+Changed paths: `contracts/`, `tests/fixtures/`, `tests/cpp/`, isolated
+`tests/sleet/`, Docker/CMake/Compose and build/test wrappers, root README and the
+two contract references. No dynamics, OpenDIS adapter, transport producer or
+normal scenario topology was added.
+
+Remaining contract work is concrete: route-planning's PRD source-identity/yaw
+expectations differ from the existing SuperCell producer; receiving a tick does
+not prove DIS source completeness. Resolve ordinary-run readiness and PRD
+compatibility with correlated consumer fixtures and SIM-TIME-FM-1. DIS old-epoch
+packet handling is deferred until after SuperCell deprecation. Detailed-route guidance/profile,
+navigation-error model, authorization mapping and emitter-source/carrier audit
+also remain open; this checkpoint does not close FM-CONTRACT-1 or ECO-FM-CONTRACT-1.
+
+Exact next bounded slice: reconcile the PRD consumer contract with a platform
+header SystemID, EGI SubsystemID and reported orientation, preserving full NED
+covariance/source-time handling. Add consumer regression cases for the existing
+and target specimens, then freeze the remaining flight-model profile and causal
+truth-input contract before SoA/runtime implementation. Cross-service epoch
+handling is not a prerequisite for that work.
+
+
+Validation: `./bootstrap.sh` builds the maintained toolchain; `./test.sh` compiles
+C++17 with warnings as errors and passes the local contract cases
+([log](../logs/20261023/contracts/contract-tests-final.log)).
+`./test_sleet.sh logs/20261023/uci-schema-contract-final` passes real UCI 2.5
+schema admission for nominal SystemID and EGI-shaped SubsystemID PRDs, and
+rejects the missing mandatory header timestamp
+([probe log](../logs/20261023/uci-schema-contract-final/schema.log),
+[ASB log](../logs/20261023/uci-schema-contract-final/services.log)).
+This proves schema admission, not consumer navigation interoperability or a
+realistic navigation model. The isolated ASB/network is removed after the test.
+Focused independent review findings on basis direction, restore pause boundaries
+and integer bounds were resolved. No OpenDIS build/interoperability or throughput
+claim is made.
+
+
+### SuperCell deprecation sequencing correction (2026-10-23)
+
+User decision: finish replacing/deprecating SuperCell before implementing new
+cross-service epoch handling. Preserve existing run/epoch/tick fields and existing
+validated behavior; do not implement DIS epoch correlation or live rewind/restore
+as a migration prerequisite. Use fresh isolated runs for replacement acceptance.
+The first executable contract's restore cases remain bounded reference fixtures.
+
+The immediate next slice remains PRD consumer compatibility (platform SystemID,
+EGI SubsystemID, reported orientation, covariance and source time). Then finish
+the bounded model/guidance profile and ordinary-run input contract, implement
+FM-SOA-1 and FM-DYNAMICS-1, and add FM-DIS-1/OpenDIS plus FM-NAV-PRD-1. Proceed
+through runtime/scenario integration and measured acceptance to SuperCell
+retirement. Complete the deferred epoch/restore work afterward. The ecosystem
+master remains the sole cross-repository checklist.
+
+
+### PRD consumer compatibility checkpoint (2026-10-23)
+
+Route-planning's existing UCI adapter now uses header SystemID as the platform
+key and accepts either SystemID or SubsystemID for the navigation contributor.
+Its adapter/dispatcher cases cover a distinct EGI, later publication time,
+component validity, reported yaw distinct from ground course, and complete
+covariance including cross terms. The standard-shaped SubsystemID fixture matches
+the prior real-Sleet schema-accepted specimen. See the
+[owning implementation/evidence](/home/jeffs/git/route-planning/docs/development_plan.md#flight-models-prd-consumer-compatibility-2026-10-23).
+
+The local consumer prerequisite is complete. SuperCell still omits yaw; the
+replacement flight-models PRD producer must include modeled navigation
+orientation. This work adds no truth/ground-course substitute, new source-ID
+assurance gate or flight runtime, and does not retire SuperCell.
+
+Exact next bounded slice: finish the initial bounded motion/guidance profile and
+ordinary-run input contract in FM-CONTRACT-1: speed/acceleration/turn/climb limits,
+route/frame/altitude and event/substep conventions, separate DIS/PRD cadences,
+reporting membership and local sensor input readiness. Use explicitly synthetic
+or ideal test profiles where appropriate rather than inventing aircraft or
+navigation performance claims. Then implement FM-SOA-1 and bounded dynamics;
+OpenDIS and modeled PRD adapters follow as recorded above. New epoch/restore
+handling remains deferred until after SuperCell deprecation.

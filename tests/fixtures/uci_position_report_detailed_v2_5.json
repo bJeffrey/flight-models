@@ -1,0 +1,73 @@
+{
+  "PositionReportDetailed": {
+    "SecurityInformation": {
+      "Classification": "U",
+      "OwnerProducer": [
+        {"GovernmentIdentifier": "USA"}
+      ]
+    },
+    "MessageHeader": {
+      "SystemID": {"UUID": "58087a47-53e1-53e8-a811-10f024f89b80"},
+      "Timestamp": "2026-08-14T12:00:00Z",
+      "SchemaVersion": "002.5.0",
+      "Mode": "SIMULATION"
+    },
+    "MessageData": {
+      "PositionReportData": [
+        {
+          "PositionSource": {
+            "SystemID": {"UUID": "1750e9e0-ab09-5a48-97ce-e0b4e566363d"}
+          },
+          "NavigationSolutionState": "BLENDED",
+          "Kinematics": {
+            "Position": {
+              "AbsolutePoint": {
+                "Latitude": 0.6108652381980153,
+                "Longitude": -2.0943951023931953,
+                "Altitude": 3000.0,
+                "AltitudeReference": "WGS_HAE",
+                "Timestamp": "2026-08-14T12:00:00Z"
+              }
+            },
+            "Velocity": {
+              "NorthSpeed": 180.0,
+              "EastSpeed": 20.0,
+              "DownSpeed": -5.0,
+              "Timestamp": "2026-08-14T12:00:00Z"
+            },
+            "Orientation": {"Yaw": 0.11065722117389565, "Pitch": 0.0, "Roll": 0.0}
+          },
+          "KinematicsError": {
+            "PositionPositionCovariance": {
+              "PnPn": 4.0,
+              "PnPe": 0.5,
+              "PnPd": 0.2,
+              "PePe": 9.0,
+              "PePd": 0.3,
+              "PdPd": 16.0
+            },
+            "PositionVelocityCovariance": {
+              "PnVn": 0.1,
+              "PnVe": 0.2,
+              "PnVd": 0.3,
+              "PeVn": 0.4,
+              "PeVe": 0.5,
+              "PeVd": 0.6,
+              "PdVn": 0.7,
+              "PdVe": 0.8,
+              "PdVd": 0.9
+            },
+            "VelocityVelocityCovariance": {
+              "VnVn": 1.0,
+              "VnVe": 0.1,
+              "VnVd": 0.2,
+              "VeVe": 2.0,
+              "VeVd": 0.3,
+              "VdVd": 3.0
+            }
+          }
+        }
+      ]
+    }
+  }
+}

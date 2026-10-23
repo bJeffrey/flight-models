@@ -1,0 +1,21 @@
+# An isolated test profile. No ports are exposed to host or normal scenarios.
+services:
+  asb:
+    image: ${SLEET_IMAGE:-registry.gitlab.com/open-arsenal/ams-gra/hello-world-sk/infra/sleet:latest}
+    command: [/opt/sleet/config/server.toml]
+    volumes:
+      - ./tests/sleet:/opt/sleet/config:ro
+    healthcheck:
+      test: [CMD-SHELL, 'sleet --health-check || exit 1']
+      interval: 1s
+      timeout: 3s
+      retries: 20
+  schema-test:
+    image: flight-models-dev:local
+    working_dir: /src
+    volumes:
+      - .:/src:ro
+    command: [build/uci-fixture-probe, asb, '9000', tests/fixtures/uci_position_report_detailed_v2_5.json]
+    depends_on:
+      asb:
+        condition: service_healthy

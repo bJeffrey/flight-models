@@ -1,0 +1,7 @@
+service_id = "contract-test"
+service_uuid = "a30b74e4-bf25-4e4f-8312-2c2aeb6d0c42"
+allowed_topics = ["contract.prd"]
+
+[[topic_bindings]]
+topic = "contract.prd"
+allowed_messages = ["PositionReportDetailed"]

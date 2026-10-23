@@ -1,0 +1,43 @@
+{
+  "platform_id": "blue_fighter_1",
+  "dis_entity_id": [
+    1,
+    1,
+    1
+  ],
+  "run_id": "flight-contract",
+  "timeline_epoch": 0,
+  "tick_id": 1,
+  "elapsed_ns": 30000000000,
+  "position_ecef_m": [
+    6379137.0,
+    0.0,
+    0.0
+  ],
+  "velocity_ecef_mps": [
+    0.0,
+    200.0,
+    0.0
+  ],
+  "body_frd_to_ecef": [
+    0,
+    0,
+    -1,
+    1,
+    0,
+    0,
+    0,
+    -1,
+    0
+  ],
+  "acceleration_ecef_mps2": [
+    0,
+    0,
+    0
+  ],
+  "angular_velocity_body_radps": [
+    0,
+    0,
+    0
+  ]
+}

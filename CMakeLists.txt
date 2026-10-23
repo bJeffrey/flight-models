@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.16)
+project(flight_models LANGUAGES CXX)
+
+# Contract validation precedes production dynamics, transports and codec targets.
+include(CTest)
+if(BUILD_TESTING)
+  find_package(nlohmann_json REQUIRED)
+  find_package(Boost REQUIRED COMPONENTS system)
+  find_path(VALIJSON_INCLUDE_DIR valijson/schema.hpp REQUIRED)
+  add_executable(flight-contract-test tests/cpp/contract_test.cpp)
+  target_compile_features(flight-contract-test PRIVATE cxx_std_17)
+  target_compile_options(flight-contract-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_include_directories(flight-contract-test PRIVATE ${VALIJSON_INCLUDE_DIR})
+  target_link_libraries(flight-contract-test PRIVATE nlohmann_json::nlohmann_json)
+  # This test client verifies the installed UCI schema against real Sleet.
+  add_executable(uci-fixture-probe tests/cpp/uci_fixture_probe.cpp)
+  target_compile_features(uci-fixture-probe PRIVATE cxx_std_17)
+  target_compile_options(uci-fixture-probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(uci-fixture-probe PRIVATE nlohmann_json::nlohmann_json Boost::system)
+  add_test(NAME flight-contract-test COMMAND flight-contract-test ${CMAKE_SOURCE_DIR})
+endif()

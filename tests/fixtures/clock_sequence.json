@@ -1,0 +1,122 @@
+{
+  "description": "Turn due at 30 seconds, pause/resume, restore to 30 seconds in a new epoch; origin remains unchanged. Intervals intentionally synthetic.",
+  "events": [
+    {
+      "operation": "initialize",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 0,
+        "tick_id": 0,
+        "t_us": 0,
+        "dt_us": 0,
+        "paused": true,
+        "advances_time": false,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 0,
+        "tick_id": 1,
+        "t_us": 30000000,
+        "dt_us": 30000000,
+        "paused": false,
+        "advances_time": true,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 0,
+        "tick_id": 1,
+        "t_us": 30000000,
+        "dt_us": 0,
+        "paused": true,
+        "advances_time": false,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 0,
+        "tick_id": 1,
+        "t_us": 30000000,
+        "dt_us": 0,
+        "paused": false,
+        "advances_time": false,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 0,
+        "tick_id": 2,
+        "t_us": 60000000,
+        "dt_us": 30000000,
+        "paused": false,
+        "advances_time": true,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 0,
+        "tick_id": 2,
+        "t_us": 60000000,
+        "dt_us": 0,
+        "paused": true,
+        "advances_time": false,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "restore",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 1,
+        "tick_id": 0,
+        "t_us": 30000000,
+        "dt_us": 0,
+        "paused": true,
+        "advances_time": false,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 1,
+        "tick_id": 0,
+        "t_us": 30000000,
+        "dt_us": 0,
+        "paused": false,
+        "advances_time": false,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "operation": "announce",
+      "tick": {
+        "run_id": "flight-contract",
+        "timeline_epoch": 1,
+        "tick_id": 1,
+        "t_us": 60000000,
+        "dt_us": 30000000,
+        "paused": false,
+        "advances_time": true,
+        "scenario_epoch_utc": "2026-01-01T00:00:00Z"
+      }
+    }
+  ]
+}

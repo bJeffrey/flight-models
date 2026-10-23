@@ -1,0 +1,8 @@
+services:
+  dev:
+    image: flight-models-dev:local
+    build: .
+    network_mode: none
+    working_dir: /src
+    volumes:
+      - .:/src
