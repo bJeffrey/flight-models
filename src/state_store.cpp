@@ -70,6 +70,7 @@ struct StateStore::Impl {
   std::size_t profile_count;
   std::size_t count{};
   std::uint64_t revision{};
+  std::uint64_t membership_revision{};
   std::uint64_t validation_tag{};
   std::unique_ptr<std::uint8_t[]> active;
   std::unique_ptr<std::uint64_t[]> generations;
@@ -97,6 +98,12 @@ struct StateStore::Impl {
   void ensure_revision_available() const {
     if (revision == std::numeric_limits<std::uint64_t>::max()) {
       throw std::overflow_error("state store revision exhausted");
+    }
+  }
+
+  void ensure_membership_revision_available() const {
+    if (membership_revision == std::numeric_limits<std::uint64_t>::max()) {
+      throw std::overflow_error("state store membership revision exhausted");
     }
   }
 
@@ -176,6 +183,54 @@ void StateBatch::copy_out(std::size_t row, PhysicalState& state, DesiredMotion& 
   desired = {base[21 * n + row], base[22 * n + row], base[23 * n + row]};
 }
 
+void StateBatch::read_state(std::size_t row, PhysicalState& state, DesiredMotion& desired) const {
+  if (row >= count_) throw std::out_of_range("state batch row out of range");
+  copy_out(row, state, desired);
+}
+
+void StateBatch::write_state(std::size_t row, const PhysicalState& state,
+                             const DesiredMotion& desired) {
+  if (row >= count_) throw std::out_of_range("state batch row out of range");
+  MutableStateColumns out = columns();
+  out.position_ecef_m.x[row] = state.position_ecef_m.x;
+  out.position_ecef_m.y[row] = state.position_ecef_m.y;
+  out.position_ecef_m.z[row] = state.position_ecef_m.z;
+  out.velocity_ecef_mps.x[row] = state.velocity_ecef_mps.x;
+  out.velocity_ecef_mps.y[row] = state.velocity_ecef_mps.y;
+  out.velocity_ecef_mps.z[row] = state.velocity_ecef_mps.z;
+  out.acceleration_ecef_mps2.x[row] = state.acceleration_ecef_mps2.x;
+  out.acceleration_ecef_mps2.y[row] = state.acceleration_ecef_mps2.y;
+  out.acceleration_ecef_mps2.z[row] = state.acceleration_ecef_mps2.z;
+  std::copy(state.body_frd_to_ecef.begin(), state.body_frd_to_ecef.end(), out.body_frd_to_ecef + 9 * row);
+  out.angular_velocity_body_radps.x[row] = state.angular_velocity_body_radps.x;
+  out.angular_velocity_body_radps.y[row] = state.angular_velocity_body_radps.y;
+  out.angular_velocity_body_radps.z[row] = state.angular_velocity_body_radps.z;
+  out.source_time_ns[row] = state.source_time_ns;
+  out.heading_rad[row] = desired.heading_rad;
+  out.horizontal_speed_mps[row] = desired.horizontal_speed_mps;
+  out.altitude_hae_m[row] = desired.altitude_hae_m;
+}
+
+void StateBatch::copy_from(const StateBatch& source) {
+  if (source.count_ > capacity_) throw std::length_error("state batch capacity exceeded");
+  bool retain_preparation = prepared_ && owner_ != nullptr && count_ == source.count_;
+  for (std::size_t row = 0; retain_preparation && row < count_; ++row) {
+    retain_preparation = handles_[row] == source.handles_[row] &&
+        profile_indices_[row] == source.profile_indices_[row] && modes_[row] == source.modes_[row];
+  }
+  count_ = source.count_;
+  for (std::size_t row = 0; row < count_; ++row) {
+    handles_[row] = source.handles_[row];
+    profile_indices_[row] = source.profile_indices_[row];
+    modes_[row] = source.modes_[row];
+    PhysicalState state;
+    DesiredMotion desired;
+    source.copy_out(row, state, desired);
+    write_state(row, state, desired);
+  }
+  prepared_ = retain_preparation;
+}
+
 StateStore::StateStore(std::size_t capacity, std::size_t profile_count) {
   if (capacity == 0 || profile_count == 0 || capacity > std::numeric_limits<std::size_t>::max() / 24) {
     throw std::invalid_argument("state store bounds must be positive and representable");
@@ -197,6 +252,7 @@ Handle StateStore::spawn(std::string id, std::size_t profile_index, EntityMode m
   }
   if (impl_->count == impl_->capacity) throw std::length_error("state store is full");
   impl_->ensure_revision_available();
+  impl_->ensure_membership_revision_available();
 
   const std::size_t slot = impl_->free_slots.front();
   if (impl_->generations[slot] == std::numeric_limits<std::uint64_t>::max()) {
@@ -215,12 +271,14 @@ Handle StateStore::spawn(std::string id, std::size_t profile_index, EntityMode m
   impl_->active[slot] = 1;
   ++impl_->count;
   ++impl_->revision;
+  ++impl_->membership_revision;
   return {inserted.first->second, generation};
 }
 
 bool StateStore::erase(Handle handle) {
   if (!impl_->current(handle)) return false;
   impl_->ensure_revision_available();
+  impl_->ensure_membership_revision_available();
   impl_->slots_by_id.erase(impl_->ids[handle.slot]);
   impl_->ids[handle.slot].clear();
   impl_->active[handle.slot] = 0;
@@ -228,11 +286,14 @@ bool StateStore::erase(Handle handle) {
   std::push_heap(impl_->free_slots.begin(), impl_->free_slots.end(), std::greater<std::size_t>{});
   --impl_->count;
   ++impl_->revision;
+  ++impl_->membership_revision;
   return true;
 }
 
 void StateStore::clear() {
   impl_->ensure_revision_available();
+  const bool changed = impl_->count != 0;
+  if (changed) impl_->ensure_membership_revision_available();
   for (std::size_t slot = 0; slot < impl_->capacity; ++slot) {
     if (impl_->active[slot] && impl_->generations[slot] == std::numeric_limits<std::uint64_t>::max()) {
       throw std::overflow_error("slot generation exhausted");
@@ -250,6 +311,7 @@ void StateStore::clear() {
   std::make_heap(impl_->free_slots.begin(), impl_->free_slots.end(), std::greater<std::size_t>{});
   impl_->count = 0;
   ++impl_->revision;
+  if (changed) ++impl_->membership_revision;
 }
 
 std::optional<Handle> StateStore::find(const std::string& id) const {
@@ -262,8 +324,11 @@ std::optional<Handle> StateStore::find(const std::string& id) const {
 bool StateStore::set_mode(Handle handle, EntityMode mode) {
   if (!impl_->current(handle) || !valid_mode(mode)) return false;
   impl_->ensure_revision_available();
+  const bool changed = impl_->modes[handle.slot] != mode;
+  if (changed) impl_->ensure_membership_revision_available();
   impl_->modes[handle.slot] = mode;
   ++impl_->revision;
+  if (changed) ++impl_->membership_revision;
   return true;
 }
 
@@ -275,6 +340,8 @@ bool StateStore::read_state(Handle handle, PhysicalState& state, DesiredMotion& 
 
 std::size_t StateStore::size() const noexcept { return impl_->count; }
 std::size_t StateStore::capacity() const noexcept { return impl_->capacity; }
+std::size_t StateStore::profile_count() const noexcept { return impl_->profile_count; }
+std::uint64_t StateStore::membership_revision() const noexcept { return impl_->membership_revision; }
 
 StateColumns StateStore::columns() const noexcept {
   const Impl& x = *impl_;

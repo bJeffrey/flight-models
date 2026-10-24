@@ -135,6 +135,23 @@ class StateBatch {
   const Handle* handles() const noexcept { return handles_.get(); }
   /** Mutable scratch only, rows [0, size()); changes reach live state only through commit. */
   MutableStateColumns columns() noexcept;
+  /**
+   * Copy one gathered row into owning values.
+   * @throws std::out_of_range if row is outside [0, size()).
+   */
+  void read_state(std::size_t row, PhysicalState& state, DesiredMotion& desired) const;
+  /**
+   * Replace one gathered row; the change remains staged until store commit.
+   * @throws std::out_of_range if row is outside [0, size()).
+   */
+  void write_state(std::size_t row, const PhysicalState& state, const DesiredMotion& desired);
+  /**
+   * Copy gathered metadata and staged rows into an equal-or-larger reusable batch.
+   * Destination ownership is never transferred. Commit preparation is retained
+   * only when the destination already represents the same handles and metadata.
+   * @throws std::length_error when destination capacity is too small.
+   */
+  void copy_from(const StateBatch& source);
   /** Read-only profile metadata for valid batch rows. */
   const std::size_t* profile_indices() const noexcept { return profile_indices_.get(); }
   /** Read-only mode metadata for valid batch rows. */
@@ -203,6 +220,10 @@ class StateStore {
   std::size_t size() const noexcept;
   /** Fixed entity bound. */
   std::size_t capacity() const noexcept;
+  /** Number of configured profile indices. */
+  std::size_t profile_count() const noexcept;
+  /** Revision incremented by successful membership, clear, or motion-mode changes. */
+  std::uint64_t membership_revision() const noexcept;
   /** Read-only live columns; views expire on store destruction or move. */
   StateColumns columns() const noexcept;
   /**

@@ -104,6 +104,56 @@ qualified separately from the internal integer-nanosecond source time. Reuse
 existing run/epoch/tick fields; new epoch/restore handling remains deferred until
 after SuperCell deprecation.
 
+## Initial waypoint/event driver slice
+
+`MotionDriver` is a single-owner, transport-free driver for one profile cohort
+in a fresh run starting at zero. Inputs are typed test/VMS-domain programs, not
+a new scenario file or wire protocol. Each enabled entity in that profile has
+one `EntityProgram`: its store handle, navigation-reporting flag, ordered ECEF
+waypoints and scheduled desired-motion commands. Fixed entities may be sampled
+but cannot have routes or commands. Disabled/other-profile entities are excluded.
+Programs and store membership remain fixed for this driver's lifetime; lifecycle
+changes require a new driver. No new epoch or restore behavior is introduced.
+
+Waypoints arrive in canonical ECEF; input adapters/fixtures convert WGS-84 HAE or
+explicit-origin ENU through shared math before admission. Each waypoint must be
+finite and have HAE within the selected envelope. Desired speed comes from the
+admitted state. Guidance updates heading/altitude toward the current waypoint
+using local geometry; capture advances the ordered cursor. On final capture,
+hold the achieved heading and retain the altitude/speed targets. This first
+admission rejects a program combining a route with timed desired-motion commands:
+manual-versus-route arbitration belongs to the later VMS adapter contract and
+must not silently discard a heading command.
+
+Commands are ordered by `(time_ns, sequence)`, with unique sequence identities
+per entity. Same-time commands apply in that order. Their complete desired
+targets must satisfy the profile. At each event time: apply commands, process
+ordered waypoint captures/guidance, refresh control-derived endpoint fields,
+then emit physical samples followed by configured navigation samples in canonical
+entity-ID order. Initial samples at zero follow the same rule. Independent
+publication periods remain anchored to zero and need not divide the clock
+interval or numerical step. These are typed sample records, not DIS/PRD encoders;
+navigation samples still require their later navigation-model adapter.
+
+Advance in maximum-substep windows split at command and sample deadlines. Probe
+the staged integrated path for its earliest waypoint-sphere entry using shared
+segment/sphere math; if capture is inside a window, reintegrate to that boundary
+before changing guidance. Capture is defined on the numerical swept chord,
+rounded upward by at most one scenario nanosecond. Qualify curved-path error by
+substep convergence; this is not an exact continuous aerodynamic trajectory.
+Several captures at one time are ordered by entity ID, then waypoint index.
+
+One store gather stages the whole interval; numerical work, route/command
+cursors and output buffers remain provisional until one final store commit.
+On failure, store values, driver time/progress and the last successful outputs
+remain unchanged. Repeated calls at the current time do not duplicate samples.
+Explicit driver limits bound admitted commands/waypoints, samples, transitions
+and boundary/event work. The profile's per-entity substep budget accumulates
+across all segments and speculative probes within the interval; event splits
+cannot reset it. Constructor allocation is allowed; workspaces/output capacity
+are reserved and reused. Existing vertical-rate jumps in the synthetic model
+remain explicit; this driver does not invent vertical acceleration limits.
+
 ## Sensor ordinary-run admission
 
 Sensor-models owns its receiver/collection profile and input admission settings.

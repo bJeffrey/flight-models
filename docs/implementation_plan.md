@@ -258,14 +258,15 @@ explicit regression harness.
   bounded scratch/event storage. Validate active masks, slot reuse, spawn/remove,
   reset and deterministic ordering with scalar/reference fixtures. Stop before
   introducing unvalidated vectorized model behavior or transport dependencies.
-- [ ] **FM-DYNAMICS-1 — flight-models:** after FM-SOA-1, implement the transport-independent
+- [x] **FM-DYNAMICS-1 — flight-models:** after FM-SOA-1, implement the transport-independent
   bounded kinematic core and waypoint guidance from FM-CONTRACT-1. Verify straight
   motion, finite-radius turns, heading wrap, acceleration/deceleration, climb and
   descent, limit saturation and waypoint progression. Compare identical elapsed
   scenario time across declared substep policies with explicit tolerances.
   Stop at local deterministic model acceptance, without aerodynamic claims.
-  The first scalar control/motion kernel is implemented in the checkpoint below;
-  waypoint progression and command/output event boundaries remain unfinished.
+  Initial scalar motion and the bounded waypoint/event driver pass local model
+  acceptance below. Live program admission, manual-versus-route arbitration and
+  runtime throughput remain their operational integration gates.
 - [ ] **FM-EMITTER-1 — flight-models:** after source ownership/carrier review and
   FM-SOA-1, implement batched emitter-source evolution/events using accepted
   profiles. Validate same event times/content under supported pacing, partitioning
@@ -278,15 +279,18 @@ explicit regression harness.
   and platform/EGI identity mapping, reporting membership and strict UCI schema
   conformance. Validate ideal and nonideal profiles separately. Stop before live
   CAL/recipient-routing acceptance; runtime wiring remains FM-RUNTIME-1.
-- [ ] **FM-DIS-1 — flight-models:** pin an OpenDIS revision/license record and
+- [x] **FM-DIS-1 — flight-models:** pin an OpenDIS revision/license record and
   build it in the maintained container environment, with the selected DIS version
   and examples disabled. Implement the adapter after FM-CONTRACT-1. Validate
   identity, source timestamp encoding/precision/wrap, ECEF position/velocity,
   orientation and dead-reckoning frames, lifecycle and packet lengths using
   independent decoding and existing sensor-models-compatible fixtures. Exercise
   the selected version explicitly: inspected upstream tests link OpenDIS6.
-  Stop before claiming live interoperability or performance gains.
-- [ ] **FM-RUNTIME-1 — flight-models:** after core, codec, emitter and navigation
+  Stop before claiming live interoperability or performance gains. Local
+  OpenDIS7 mapping and existing sensor decoder acceptance are recorded below;
+  fixed/moving/disabled publication rules are covered. Live spawn/removal and
+  transport publication remain FM-RUNTIME-1.
+- [ ] **FM-RUNTIME-1 — flight-models:** after core, DIS adapter, emitter and navigation
   checks, add the clock,
   route ingress and output adapters. Preserve command idempotency, plan version,
   applicability, cancellation, permission expiry/revocation and reset behavior.
@@ -759,8 +763,138 @@ with `./benchmark.sh`; the metadata records frozen-baseline comparison commands.
 The requested shared-math/adoption/optimization slice is complete. This measures
 the scalar path, not Eigen/MKL, parallel execution or full scenario throughput.
 
-Next implementation slice: FM-DYNAMICS-1 waypoint guidance and scheduled-event
-boundaries. The cross-service DIS/PRD/OMR conversion inventory remains a separate
+The subsequent waypoint/event slice is now accepted in the checkpoint below.
+The cross-service DIS/PRD/OMR conversion inventory remains a separate
 pending task before adapter acceptance; numerical backend/population dispatch
 also remains unqualified. New epoch/restore handling stays deferred until after
 SuperCell deprecation.
+
+### Bounded waypoint and event-driver acceptance (2026-10-23)
+
+FM-DYNAMICS-1's initial transport-free model is accepted locally.
+`MotionDriver` consumes typed entity programs supplied directly by deterministic
+tests: ordered ECEF waypoints or ordered timed desired-motion commands, plus
+navigation-reporting membership. It introduces no scenario format or operational
+command protocol. See the [input contract](motion_input_contract.md#initial-waypointevent-driver-slice).
+WGS-84/explicit-origin ENU admission uses shared math; a new shared Cartesian
+segment/sphere primitive owns swept contact geometry. Guidance uses the existing
+shared line-of-sight bearing and caches immutable waypoint HAE once at admission.
+ECEF remains the stored physical frame.
+
+The driver stages an entire interval in reusable SoA batches. Commands, route
+cursors, initial events and independent physical/navigation sample deadlines
+become visible only after one successful store commit. Construction has no
+observable motion/event effects; the first advance, including `advance_to(0)`,
+validates and processes initial state transactionally. Same-time commands use
+their supplied sequence order; overlapping waypoints drain in route order before
+coincident samples. Capture uses a numerical swept chord with upward rounding
+of at most one nanosecond, not exact continuous aerodynamic intersection.
+Post-command samples carry refreshed control derivatives, retaining the existing
+explicit synthetic vertical-rate discontinuities.
+
+Admission and output/event bounds are explicit `DriverLimits`, with a
+schema-validated small fixture policy in `config/event_policy{,.schema}.json`.
+Deployment sizing/loading is not implemented here. Cumulative per-entity
+numerical budgets include all event segments and probes/reintegration. Failed
+advances retain committed store values, time, cursors and prior outputs. Fixed
+entities retain pose while advancing sample validity; disabled and other-profile
+entities are excluded. A membership revision detects structural cohort changes;
+this driver supports a fresh, fixed cohort/program set, not live spawn or route
+replacement. Mixed route/manual-command programs fail explicitly until VMS
+arbitration is specified. Typed navigation-cadence samples are inputs to the later
+navigation model/encoder, not accepted operational PRDs.
+
+Changed paths: driver public header/source; staged kernel and StateBatch helpers;
+store membership revision; driver fixture policy/schema; driver/math geometry
+tests and CMake; shared swept-contact header/source; README/index and references.
+Public APIs document units, ownership, sample lifetimes and failure boundaries.
+Program lookup is linear at admission rather than a quadratic entity search.
+
+Validation: maintained Docker Release builds with warnings as errors pass all
+five flight-models and five shared-math test executables. Evidence:
+[flight tests](../logs/20261023/events/flight-tests.log) and
+[math tests](../logs/20261023/events/math-tests.log). Cases include 70/110 ms
+independent cadences, exact 30 s command application, same-time command order,
+post-event derivatives, 0.25 m waypoint capture with 20 ms steps at 100 m/s,
+coincident captures, guided turns, failed initial/interval transactions and retry,
+output/transition/aggregate-step limits, invalid initial moving states and cohort
+lifecycle changes. Nonaligned input partitions preserve publication times and
+agree within 1 mm in the tested trajectory. Guided 10 ms and 1 ms substep runs
+agree within the same fixture tolerance at 2 s. A warmed allocation guard covers
+event processing and the unchanged scalar entry point. Focused review findings
+on initial validation, cascade ordering and lifecycle boundaries are resolved.
+
+The existing scalar benchmark was rerun once with its unchanged workload and
+Release configuration: medians were 95407, 107967, 107056 and 107256 entity
+updates/s for populations 1, 32, 1000 and 10000
+([raw samples](../logs/20261023/events/scalar-benchmark.txt)). These are within
+about 0.4–3.5% of the prior optimized medians; one check does not establish a
+statistical regression or qualify the new event driver. No backend crossover,
+event-driver workload/FTRT or scenario acceptance is claimed.
+
+Next at this checkpoint (completed in the subsequent adapter checkpoint):
+**FM-DIS-1**, pin/build OpenDIS in the
+maintained container and implement/independently decode EntityState packets from
+typed ECEF snapshots, checking identity, time precision/wrap, orientation and
+dead-reckoning conventions. Reuse the existing adapter contract and complete its
+relevant conversion inventory. Navigation/error/PRD and emitter ownership gates
+then feed runtime/scenario integration before SuperCell retirement. New epoch
+and restore handling remain deferred until after deprecation.
+
+### OpenDIS EntityState adapter checkpoint (2026-10-23)
+
+FM-DIS-1's local adapter slice is accepted. The maintained container pins and
+verifies OpenDIS C++ revision `d1288ace9ea9a5630c10d9d458c01be889833345`,
+builds static DIS7 only, and retains license/source notices. OpenDIS owns binary
+serialization/deserialization. Flight-models only maps completed physical truth
+and explicit metadata into its EntityState PDU. The
+[field mapping and dependency record](adapter_contract.md#flight-models-opendis-boundary-2026-10-23)
+documents the build workaround, precision and supported fields.
+
+Changed paths: `include/flight_models/dis_entity_state.h`,
+`src/dis_entity_state.cpp`, the two DIS tests, CMake/Docker/Compose, and existing
+README/index/adapter references. The required reusable DCM-to-Z-Y-X extraction
+lives in `math/include/math/coordinates/geometry.hpp` and its implementation,
+with direct shared-math tests. It validates proper rotations, preserves both
+vertical-attitude signs, and uses deterministic zero roll at gimbal lock.
+Position and world-frame vectors retain canonical ECEF; no geodetic position
+conversion is added. Only the wire-required attitude representation and float32
+fields change. No runtime, custom codec or new epoch handling was added.
+
+Validation: `./bootstrap.sh` provisioned the pinned dependency. `./test.sh` passes
+all seven flight-models CTest executables in the offline Release container,
+including OpenDIS decoding and the existing sensor-models decoder/alignment code
+compiled as test-only sources. The retained SuperCell v7 fixture supplies the
+consumer-compatible identity/type/kinematics specimen. Cases cover 144-byte
+packets, identity/type/marking, ECEF values, DR 1/4, zero fixed derivatives,
+disabled/invalid inputs, ASCII bounds, non-hour-aligned epoch origins, hourly
+wrap, and the int64 elapsed-time limit. Sensor alignment agrees within 1677 ns;
+this is DIS wire quantization, not a fine TDOA requirement. All five shared-math
+executables pass, including direct inverse-rotation reconstruction near and at
+both gimbal singularities. Focused independent review found no material blockers.
+
+Evidence: [bootstrap](../logs/20261023/dis/bootstrap.log),
+[flight tests](../logs/20261023/dis/flight-tests.log),
+[math tests](../logs/20261023/dis/math-tests.log).
+Reproduce math checks in the maintained image with:
+
+```sh
+docker compose run --pull never --rm -T dev sh -ec '
+  cmake -S /math -B /src/build/math-coordinate-check -G Ninja -DCMAKE_BUILD_TYPE=Release -DMATH_BUILD_TESTS=ON
+  cmake --build /src/build/math-coordinate-check
+  ctest --test-dir /src/build/math-coordinate-check --output-on-failure
+'
+```
+
+Unresolved: metadata is supplied through the typed API, not yet loaded from a
+normal scenario; live DIS publication, lifecycle/removal, PRD production, emitter
+source ownership/carriers, and end-to-end consumer/frame acceptance remain their
+integration gates. No throughput or live interoperability claim is made.
+
+Exact next bounded slice: **FM-NAV-PRD-1**, establish the typed navigation/error
+state and ideal/nonideal reporting contract using the existing PRD fixture and
+accepted timing/accuracy references, then implement and validate the navigation
+model/PRD adapter. Preserve physical truth separation and source/creation times;
+do not expose physical truth as a nonideal navigation fallback. Emitter ownership
+and runtime/scenario integration still precede SuperCell retirement. New epoch
+and restore handling stay deferred until after deprecation.

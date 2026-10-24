@@ -21,11 +21,20 @@ target_include_directories(flight_models_state PUBLIC include)
 target_link_libraries(flight_models_state PUBLIC math::math)
 
 # The first scalar reference kernel keeps all numerical-backend details private.
-add_library(flight_models_motion src/bounded_motion.cpp)
+add_library(flight_models_motion src/bounded_motion.cpp src/motion_driver.cpp)
 target_compile_features(flight_models_motion PUBLIC cxx_std_17)
 target_compile_options(flight_models_motion PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(flight_models_motion PUBLIC include)
 target_link_libraries(flight_models_motion PUBLIC flight_models_state flight_models_config)
+
+# Upstream's package config creates aliases for both DIS versions unconditionally.
+# Import its exported targets directly so the image can install only DIS7.
+find_package(OpenDIS CONFIG REQUIRED CONFIGS OpenDISTargets.cmake)
+add_library(flight_models_dis src/dis_entity_state.cpp)
+target_compile_features(flight_models_dis PUBLIC cxx_std_17)
+target_compile_options(flight_models_dis PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(flight_models_dis PUBLIC include)
+target_link_libraries(flight_models_dis PUBLIC flight_models_state PRIVATE OpenDIS::OpenDIS7)
 
 option(FLIGHT_MODELS_BUILD_BENCHMARK "Build the deterministic motion benchmark" OFF)
 if(FLIGHT_MODELS_BUILD_BENCHMARK)
@@ -38,6 +47,21 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(dis-entity-state-test tests/cpp/dis_entity_state_test.cpp)
+  target_compile_options(dis-entity-state-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(dis-entity-state-test PRIVATE flight_models_dis OpenDIS::OpenDIS7)
+  add_test(NAME dis-entity-state-test COMMAND dis-entity-state-test)
+  # Exercise the maintained receiving implementation, not a second test codec.
+  set(FLIGHT_SENSOR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../sensor-models" CACHE PATH
+      "Sensor-models source for test-only DIS interoperability")
+  add_executable(dis-sensor-interop-test tests/cpp/dis_sensor_interop_test.cpp
+      "${FLIGHT_SENSOR_SOURCE_DIR}/src/cpp/dis/entity_state_decoder.cpp"
+      "${FLIGHT_SENSOR_SOURCE_DIR}/src/cpp/dis/timestamp_alignment.cpp")
+  target_compile_options(dis-sensor-interop-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_include_directories(dis-sensor-interop-test PRIVATE "${FLIGHT_SENSOR_SOURCE_DIR}/include")
+  target_link_libraries(dis-sensor-interop-test PRIVATE flight_models_dis)
+  add_test(NAME dis-sensor-interop-test COMMAND dis-sensor-interop-test
+      "${FLIGHT_SENSOR_SOURCE_DIR}/tests/fixtures/supercell_entity_state_v7.hex")
   find_package(Boost REQUIRED COMPONENTS system)
   add_executable(flight-contract-test tests/cpp/contract_test.cpp)
   target_compile_features(flight-contract-test PRIVATE cxx_std_17)
@@ -61,6 +85,11 @@ if(BUILD_TESTING)
   target_link_libraries(bounded-motion-test PRIVATE flight_models_motion)
   target_compile_options(bounded-motion-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   add_test(NAME bounded-motion-test COMMAND bounded-motion-test ${CMAKE_SOURCE_DIR})
+  add_executable(motion-driver-test tests/cpp/motion_driver_test.cpp tests/cpp/allocation_probe.cpp)
+  target_link_libraries(motion-driver-test PRIVATE flight_models_motion nlohmann_json::nlohmann_json)
+  target_include_directories(motion-driver-test PRIVATE ${VALIJSON_INCLUDE_DIR})
+  target_compile_options(motion-driver-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME motion-driver-test COMMAND motion-driver-test ${CMAKE_SOURCE_DIR})
   add_test(NAME motion-profile-test COMMAND motion-profile-test ${CMAKE_SOURCE_DIR})
   add_test(NAME flight-contract-test COMMAND flight-contract-test ${CMAKE_SOURCE_DIR})
 endif()

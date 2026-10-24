@@ -99,9 +99,9 @@ EndpointDerivatives endpoint_derivatives(const LocalFrame& frame,
 
 }  // namespace
 
-void advance_motion(StateStore& store, StateBatch& scratch,
-                    std::size_t profile_index, const MotionProfile& profile,
-                    std::int64_t end_time_ns) {
+void advance_motion_batch(StateBatch& scratch, const MotionProfile& profile,
+                          std::int64_t end_time_ns, std::int64_t* cumulative_substeps,
+                          std::size_t count_capacity) {
   const auto& limits = profile.flight_envelope;
   const auto& policy = profile.integration;
   if (end_time_ns < 0) throw std::invalid_argument("end time must be nonnegative");
@@ -121,23 +121,23 @@ void advance_motion(StateStore& store, StateBatch& scratch,
       limits.max_altitude_hae_m < limits.min_altitude_hae_m) {
     throw std::invalid_argument("invalid motion envelope");
   }
-  store.gather_profile(profile_index, EntityMode::moving, scratch);
-  MutableStateColumns columns = scratch.columns();
   const std::size_t count = scratch.size();
+  if (cumulative_substeps != nullptr && count > count_capacity) {
+    throw std::length_error("substep counter capacity exceeded");
+  }
+  MutableStateColumns columns = scratch.columns();
   const double pi = math::constants::pi;
-  bool any_advance = false;
   for (std::size_t row = 0; row < count; ++row) {
+    if (scratch.modes()[row] != EntityMode::moving) continue;
     const std::int64_t source = columns.source_time_ns[row];
     if (source < 0 || end_time_ns < source || end_time_ns - source > policy.max_interval_ns) {
       throw std::invalid_argument("invalid or overlong motion interval");
     }
-    any_advance = any_advance || end_time_ns > source;
   }
-  if (!any_advance) return;
 
   for (std::size_t row = 0; row < count; ++row) {
+    if (scratch.modes()[row] != EntityMode::moving) continue;
     const std::int64_t source = columns.source_time_ns[row];
-    if (end_time_ns == source) continue;
     const double desired_heading = columns.heading_rad[row];
     const double desired_speed = columns.horizontal_speed_mps[row];
     const double desired_altitude = columns.altitude_hae_m[row];
@@ -172,13 +172,13 @@ void advance_motion(StateStore& store, StateBatch& scratch,
     Vector3 ned_velocity = math::coordinates::rotate(
         math::coordinates::transpose(frame.ned_to_ecef), velocity);
     double speed = std::hypot(ned_velocity.x, ned_velocity.y);
+    const double vertical_rate = -ned_velocity.z;
     const double velocity_heading = math::numerical::wrap_radians_positive(
         std::atan2(ned_velocity.y, ned_velocity.x));
     if (std::abs(math::numerical::wrap_radians_signed(velocity_heading - heading)) >
         kHeadingRoundoffToleranceRad) {
       throw std::invalid_argument("initial attitude heading disagrees with velocity");
     }
-    const double vertical_rate = -ned_velocity.z;
     if (!std::isfinite(speed) || speed < limits.min_speed_mps - kSpeedRoundoffToleranceMps ||
         speed > limits.max_speed_mps + kSpeedRoundoffToleranceMps ||
         vertical_rate > limits.max_climb_rate_mps + kSpeedRoundoffToleranceMps ||
@@ -200,13 +200,15 @@ void advance_motion(StateStore& store, StateBatch& scratch,
     location.altitude_m = std::clamp(location.altitude_m,
                                     limits.min_altitude_hae_m, limits.max_altitude_hae_m);
     frame.origin.altitude_m = location.altitude_m;
+    if (end_time_ns == source) continue;
 
     const double normalized_desired_heading = math::numerical::wrap_radians_positive(desired_heading);
     double remaining_heading = math::numerical::wrap_radians_signed(normalized_desired_heading - heading);
     if (std::abs(std::abs(remaining_heading) - pi) < 1.0e-14) remaining_heading = pi;
     const int direction = remaining_heading < 0.0 ? -1 : 1;
     std::int64_t remaining_ns = end_time_ns - source;
-    std::int64_t steps = 0;
+    std::int64_t local_steps = 0;
+    std::int64_t& steps = cumulative_substeps == nullptr ? local_steps : cumulative_substeps[row];
     double endpoint_speed_rate = 0.0;
     double endpoint_heading_rate = 0.0;
     double endpoint_vertical_rate = 0.0;
@@ -313,7 +315,68 @@ void advance_motion(StateStore& store, StateBatch& scratch,
     columns.angular_velocity_body_radps.z[row] = derivatives.angular_velocity_body_radps.z;
     columns.source_time_ns[row] = end_time_ns;
   }
-  store.commit(scratch);
+}
+
+void advance_motion(StateStore& store, StateBatch& scratch,
+                    std::size_t profile_index, const MotionProfile& profile,
+                    std::int64_t end_time_ns) {
+  store.gather_profile(profile_index, EntityMode::moving, scratch);
+  bool any_advance = false;
+  const MutableStateColumns columns = scratch.columns();
+  for (std::size_t row = 0; row < scratch.size(); ++row)
+    any_advance = any_advance || columns.source_time_ns[row] < end_time_ns;
+  advance_motion_batch(scratch, profile, end_time_ns, nullptr, 0);
+  if (any_advance) store.commit(scratch);
+}
+
+void refresh_motion_controls(StateBatch& scratch, const MotionProfile& profile) {
+  const auto& limits = profile.flight_envelope;
+  MutableStateColumns columns = scratch.columns();
+  for (std::size_t row = 0; row < scratch.size(); ++row) {
+    if (scratch.modes()[row] != EntityMode::moving) continue;
+    Vector3 position{columns.position_ecef_m.x[row], columns.position_ecef_m.y[row], columns.position_ecef_m.z[row]};
+    Vector3 velocity{columns.velocity_ecef_mps.x[row], columns.velocity_ecef_mps.y[row], columns.velocity_ecef_mps.z[row]};
+    GeodeticPosition location = math::coordinates::ecef_to_geodetic(position);
+    LocalFrame frame = math::coordinates::make_local_frame(location);
+    const Vector3 ned_velocity = math::coordinates::rotate(math::coordinates::transpose(frame.ned_to_ecef), velocity);
+    const double speed = std::hypot(ned_velocity.x, ned_velocity.y);
+    const double heading = math::numerical::wrap_radians_positive(std::atan2(ned_velocity.y, ned_velocity.x));
+    const double desired_heading = math::numerical::wrap_radians_positive(columns.heading_rad[row]);
+    double heading_error = math::numerical::wrap_radians_signed(desired_heading - heading);
+    if (std::abs(std::abs(heading_error) - math::constants::pi) < 1.0e-14) {
+      heading_error = math::constants::pi;
+    }
+    const double heading_rate = std::abs(heading_error) < 1.0e-14 ? 0.0
+        : std::copysign(limits.max_turn_rate_radps, heading_error);
+    const double desired_speed = columns.horizontal_speed_mps[row];
+    const double speed_rate = speed == desired_speed ? 0.0
+        : std::copysign(desired_speed > speed ? limits.max_acceleration_mps2 : limits.max_deceleration_mps2,
+                        desired_speed - speed);
+    const double desired_altitude = columns.altitude_hae_m[row];
+    const double altitude_delta = desired_altitude - location.altitude_m;
+    const double vertical_limit = altitude_delta >= 0.0 ? limits.max_climb_rate_mps : limits.max_descent_rate_mps;
+    if (altitude_delta != 0.0 && vertical_limit <= 0.0) {
+      throw std::invalid_argument("invalid vertical rate limit");
+    }
+    const double control_vertical_rate = altitude_delta == 0.0 ? 0.0 : std::copysign(vertical_limit, altitude_delta);
+    const double pitch = std::atan2(control_vertical_rate, speed);
+    const math::Matrix3 local_attitude = math::coordinates::body_frd_to_ned(heading, pitch, 0.0);
+    const math::Matrix3 body_to_ecef = math::coordinates::compose_rotations(frame.ned_to_ecef, local_attitude);
+    const EndpointDerivatives derivatives = endpoint_derivatives(
+        frame, local_attitude, heading, speed, control_vertical_rate, speed_rate, heading_rate);
+    const Vector3 refreshed_velocity = math::coordinates::rotate(
+        frame.ned_to_ecef, velocity_ned(speed, heading, control_vertical_rate));
+    columns.velocity_ecef_mps.x[row] = refreshed_velocity.x;
+    columns.velocity_ecef_mps.y[row] = refreshed_velocity.y;
+    columns.velocity_ecef_mps.z[row] = refreshed_velocity.z;
+    columns.acceleration_ecef_mps2.x[row] = derivatives.acceleration_ecef_mps2.x;
+    columns.acceleration_ecef_mps2.y[row] = derivatives.acceleration_ecef_mps2.y;
+    columns.acceleration_ecef_mps2.z[row] = derivatives.acceleration_ecef_mps2.z;
+    std::copy(body_to_ecef.begin(), body_to_ecef.end(), columns.body_frd_to_ecef + 9 * row);
+    columns.angular_velocity_body_radps.x[row] = derivatives.angular_velocity_body_radps.x;
+    columns.angular_velocity_body_radps.y[row] = derivatives.angular_velocity_body_radps.y;
+    columns.angular_velocity_body_radps.z[row] = derivatives.angular_velocity_body_radps.z;
+  }
 }
 
 }  // namespace flight_models

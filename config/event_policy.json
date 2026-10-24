@@ -1,0 +1,8 @@
+{
+  "description": "Bounded local event-driver fixture policy; deployment sizing and runtime loading remain separate acceptance work.",
+  "max_commands": 64,
+  "max_waypoints": 64,
+  "max_samples": 4096,
+  "max_transitions": 128,
+  "max_events": 4096
+}

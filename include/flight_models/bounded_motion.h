@@ -41,4 +41,28 @@ void advance_motion(StateStore& store, StateBatch& scratch,
                     std::size_t profile_index, const MotionProfile& profile,
                     std::int64_t end_time_ns);
 
+/**
+ * Integrate moving rows already staged in a batch without committing them.
+ * @param scratch Gathered rows; moving rows are integrated, other modes are unchanged.
+ * @param profile Validated motion limits and numerical policy.
+ * @param end_time_ns Common endpoint in scenario nanoseconds.
+ * @param cumulative_substeps Optional per-row in/out work totals for this overall interval;
+ *        null uses a local per-call counter, as needed by the legacy wrapper.
+ * @param count_capacity Number of counters available when the pointer is nonnull.
+ * @throws std::invalid_argument for invalid policy, state, target, time, numerical
+ *         failure, or exhausted cumulative work budget.
+ * @throws std::length_error when the counter array is too small.
+ */
+void advance_motion_batch(StateBatch& scratch, const MotionProfile& profile,
+                          std::int64_t end_time_ns,
+                          std::int64_t* cumulative_substeps,
+                          std::size_t count_capacity);
+
+/**
+ * Refresh right-hand control-derived velocity and derivatives after a target change
+ * at the current event time. Vertical-rate changes follow the synthetic model's
+ * explicit instantaneous transition; no vertical acceleration is modeled.
+ */
+void refresh_motion_controls(StateBatch& scratch, const MotionProfile& profile);
+
 }  // namespace flight_models

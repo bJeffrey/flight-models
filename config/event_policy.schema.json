@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["description", "max_commands", "max_waypoints", "max_samples", "max_transitions", "max_events"],
+  "properties": {
+    "description": {"type": "string"},
+    "max_commands": {"type": "integer", "minimum": 0, "description": "Maximum admitted timed commands across a profile cohort."},
+    "max_waypoints": {"type": "integer", "minimum": 0, "description": "Maximum admitted route points across a profile cohort."},
+    "max_samples": {"type": "integer", "minimum": 1, "description": "Maximum provisional physical/navigation sample records per advance."},
+    "max_transitions": {"type": "integer", "minimum": 1, "description": "Maximum provisional waypoint transitions per advance."},
+    "max_events": {"type": "integer", "minimum": 1, "description": "Maximum driver boundary/event work per advance; separate from per-entity numerical step budgets."}
+  }
+}

@@ -20,6 +20,52 @@ Source: `ams-gra-hello-world-sk-sim-supercell/src/dis.rs`,
 | Dead reckoning | Static entities use static algorithm; moving entities use DRM_RVW with ECEF acceleration and body angular rates | Acceleration fields are ECEF; angular-rate fields are body axes in rad/s. Runtime evolution and lifecycle semantics remain open. |
 | Header timestamp | UTC scenario datetime converted to absolute DIS hour-relative units; low bit marks absolute | About 1.676 microsecond units; wraps hourly by format. `EntityState.sim_time_s` is not read by the builder. |
 
+### Flight-models OpenDIS boundary (2026-10-23)
+
+`encode_entity_state` in `include/flight_models/dis_entity_state.h` maps a completed
+physical sample plus explicit scenario identity/type metadata to OpenDIS7's
+`EntityStatePdu`. OpenDIS owns packet layout, byte order and serialization; no new
+DIS encoder/decoder is implemented. Position remains float64 ECEF without a
+geodetic round trip. ECEF velocity/acceleration and body-FRD angular rates are
+rounded to the wire's float32 fields. Shared `math::coordinates` extracts the
+Z-Y-X angles directly from the body-to-ECEF DCM, with deterministic zero roll at
+gimbal lock. This representation change does not involve a local geographic frame.
+
+The adapter emits DIS 7, family/type 1/1, with no variable parameters (144 bytes).
+Fixed entities use DR 1 and zero velocity/acceleration/angular rate; moving
+entities use DR 4 with world acceleration and body angular rate. Disabled entities
+are rejected. Appearance, capabilities, alternate type and PDU status remain zero
+in this initial model. Markings are explicitly supplied printable ASCII of at
+most 11 bytes; invalid markings fail instead of silently changing identity text.
+
+Elapsed scenario nanoseconds still begin at zero. An explicit scenario UTC epoch
+offset within an hour supplies the absolute DIS timestamp origin; no wall-clock
+read occurs. Integer conversion follows the existing SuperCell/sensor-models
+`2^31-1` units/hour convention, rounds down and sets the absolute bit. Precision
+loss is less than 1677 ns. SuperCell rounded to nearest, so packets may differ by
+one timestamp unit; consumer tests use a precision tolerance. Hourly rollover and
+the full nonnegative int64 elapsed-time range are covered. Fine TDOA durations
+remain separate from this coarse DIS timestamp. Receiving code still requires
+authoritative clock context to disambiguate the hour.
+
+The test-only `dis-sensor-interop-test` compiles the existing sensor-models decoder
+and timestamp alignment code, read-only, against output based on its retained
+SuperCell fixture. Production `flight_models_dis` has no sensor-models dependency.
+Publication scheduling, UDP transport, live lifecycle/removal, scenario metadata
+loading, and live consumer acceptance remain runtime integration work.
+
+Dependency provenance: [OpenDIS C++ revision d1288ace](https://github.com/open-dis/open-dis-cpp/tree/d1288ace9ea9a5630c10d9d458c01be889833345),
+upstream project version 1.2.0. The Dockerfile verifies archive SHA-256
+`eb6bf63ea26299cd980c9965de5e754646ccb4404f11be8ca246bb46dd21ee2a` and
+installs a static DIS7-only Release build, with examples/tests disabled. The root
+license is BSD-2-Clause; generated source files also carry their original
+MOVES/NPS redistribution notices. Full sources/notices are retained at
+`/opt/opendis-source`, and the root license is copied to
+`/usr/local/share/licenses/opendis/LICENSE` in the image. Upstream's package
+config aliases both version libraries unconditionally, so our CMake imports the
+exported targets directly to use the DIS7-only installation. Bootstrap downloads
+dependencies; normal builds/tests run offline in the cached container.
+
 ## UCI PositionReportDetailed
 
 Source: `ams-gra-hello-world-sk-sim-supercell/src/owp.rs` and

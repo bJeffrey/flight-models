@@ -33,13 +33,16 @@ large batches require separate cost/qualification checks.
 
 
 [SoA physical-state storage](state_storage.md) now implements FM-SOA-1 with indexed
-views, reusable cohort staging and owning snapshots. The next local development
-slice is FM-DYNAMICS-1. Its first scalar motion kernel is implemented; waypoint
-and event-boundary integration remain open in the owning plan. Numerical
+views, reusable cohort staging and owning snapshots. FM-DYNAMICS-1's initial
+scalar motion and waypoint/event model now passes local acceptance. Numerical
 backend/dispatch qualification remains pending.
 
 The [shared-math adoption and scalar optimization checkpoint](implementation_plan.md#shared-math-adoption-and-scalar-conversion-checkpoint-2026-10-23)
 is complete, with passing math/flight tests and a frozen-baseline benchmark.
-Waypoint/event implementation is next. The end-to-end DIS/PRD/OMR conversion
-inventory and numerical backend/dispatch qualification remain pending; canonical
-ECEF truth and reported-navigation separation are preserved.
+The [bounded waypoint/event-driver checkpoint](implementation_plan.md#bounded-waypoint-and-event-driver-acceptance-2026-10-23)
+records the subsequent model acceptance. The
+[OpenDIS EntityState adapter checkpoint](implementation_plan.md#opendis-entitystate-adapter-checkpoint-2026-10-23)
+now records local serialization and existing-consumer decoding acceptance.
+Navigation/error-state and PRD implementation is the next bounded slice.
+The end-to-end DIS/PRD/OMR conversion inventory and runtime/throughput gates remain
+pending; canonical ECEF truth and reported-navigation separation are preserved.
