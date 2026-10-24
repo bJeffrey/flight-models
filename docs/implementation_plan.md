@@ -973,3 +973,72 @@ Audit retained emitter source/carrier ownership before moving its behavior. That
 configuration contract feeds FM-RUNTIME-1 clock/output wiring; full operational
 control/emitter and live acceptance remain prerequisites to retirement. New epoch
 and restore handling remain deferred until after SuperCell deprecation.
+
+### Fresh-run execution core and scenario bindings (2026-10-23)
+
+This budget-bounded slice implements the fresh-run execution core and scenario
+binding generator. It does **not** implement a network process or replace normal
+SuperCell startup. Scope was reduced at the user's 14%-remaining update to finish
+and validate existing work while aiming to stop near 10%; remaining usage is not
+visible to the agent. No measured token/cost saving is claimed.
+
+Changed paths: `include/flight_models/runtime.h`, `src/runtime.cpp`,
+`tests/cpp/runtime_test.cpp`, the scalar ideal-navigation helper and CMake;
+`ai-bm-sim/tools/generate_flight_models_runtime_inputs.py` and its focused tests.
+The generator reuses ai-bm-sim's existing scenario loader/topology normalizer,
+requires complete explicit scenario-instance bindings, and preserves scenario
+locations, epoch and duration. Unique runtime IDs use scenario instances rather
+than repeated platform-template entity IDs. DIS identities, platform/EGI UUIDs,
+ASB URLs and topics are explicit bindings; missing or duplicate mappings fail.
+It does not depend on SuperCell identity export. No radio/channel definitions move.
+
+The C++ core loads its explicit motion profile/resource bounds, initializes ECEF
+state using shared math, and owns one fresh fixed cohort. Direct elapsed-time
+advances produce scheduled physical DIS for each entity and PRDs only for the
+configured reporting set. Every intermediate sample retains its validity time;
+PRD creation uses the advance boundary. Small individual navigation samples use
+the shared ideal helper without a temporary store. Epoch origin only formats
+absolute timestamps; new recovery handling remains deferred. Unsupported live
+commands/waypoints fail explicitly. Encoding failure poisons the runtime because
+motion has already committed; retries cannot claim transactional publication.
+No new backend or throughput qualification is claimed.
+
+Validation: `./test.sh` passes all ten flight-models CTest executables in the
+maintained offline Release container. The runtime test checks initial samples,
+100/200 ms cadence, partitioned versus direct advancement, independent red DIS
+versus configured PRD reporting, delayed creation versus validity, and invalid
+capacity/profile/unsupported commands. Evidence:
+[flight tests](../logs/20261023/runtime/tests.log).
+Generator validation: from ai-bm-sim,
+`PYTHONPATH=. pytest -q tests/test_generate_flight_models_runtime_inputs.py`
+passes all three tests, covering normalized locations, explicit bindings, epoch,
+policy and ambiguity failures. Focused independent review found no material
+blockers. No live runtime transport/system test was run in this slice.
+
+Generator invocation (all paths explicit):
+
+```sh
+python tools/generate_flight_models_runtime_inputs.py \
+  --scenario config/scenarios/bma_policy_4blue_80nmi.yaml \
+  --bindings <platform-bindings.json> --policy <flight-runtime-policy.json> \
+  --output logs/<date>/<run>/flight-models.json --run-id <run-id>
+```
+
+The policy supplies capacity, profile/schema paths, event limits and transport
+settings (NATS URL/clock subject, DIS host/port, OWP service ID, clock poll and
+operation timeouts). Bindings map scenario instance IDs to initial fixed/moving
+mode, heading/speed, DIS identity/type/marking and optional PRD identity/security/
+ASB/topic metadata. Scenario epoch/duration come from the selected scenario.
+Transport fields are carried through but not consumed by this library. Complete
+versioned deployment schema validation, policy/binding examples and path/mount
+admission remain prerequisites to launching a runtime process.
+
+Exact next slice: add deployment configuration/schema and a thin C++ process
+around this core: consume the existing `sim.time.tick` protobuf on simulation
+NATS, preserve fresh-run causal admission/pause semantics, send DIS directly via
+UDP, and publish unchanged UCI PRDs to explicitly bound per-platform ASBs.
+Current ecosystem startup still assumes one legacy ASB and SuperCell; it must
+not silently substitute that topology for the accepted platform-local target.
+Then add opt-in scenario startup and isolated transport acceptance before the
+full emitter/control/sensor/communications/performance retirement gates.
+SuperCell remains current/reference; new epoch/restore work remains deferred.

@@ -7,6 +7,15 @@ EntityState adapter and separate ideal-test navigation/PRD generation. Runtime
 transport adapters and nonideal navigation remain pending. Start from the
 [planning index](docs/README.md).
 
+The fresh-run `Runtime` library now joins initial scenario state, motion sampling,
+DIS encoding and explicitly configured PRD reporting. `advance_to()` consumes
+elapsed simulation nanoseconds and returns owned output records; it does not
+open network connections. The ai-bm-sim generator
+`tools/generate_flight_models_runtime_inputs.py` normalizes scenario locations
+and joins explicit DIS/EGI/ASB bindings without the SuperCell exporter.
+See the [current runtime checkpoint](docs/implementation_plan.md#fresh-run-execution-core-and-scenario-bindings-2026-10-23)
+for the remaining schema, process and startup integration work.
+
 Provision the maintained Docker toolchain once, then run offline contract tests:
 
 ```sh

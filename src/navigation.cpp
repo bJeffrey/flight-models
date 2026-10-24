@@ -16,6 +16,24 @@ bool finite(math::Vector3 value) noexcept {
 
 }  // namespace
 
+NavigationSolution ideal_navigation_solution(const PhysicalState& state,
+                                               const std::string& selected_model) {
+  if (selected_model != "ideal_test") {
+    throw std::invalid_argument("navigation model must be explicitly selected as ideal_test");
+  }
+  if (state.source_time_ns < 0 || !finite(state.position_ecef_m) ||
+      !finite(state.velocity_ecef_mps) ||
+      !math::coordinates::is_proper_rotation(state.body_frd_to_ecef, 1e-6)) {
+    throw std::invalid_argument("invalid physical state for ideal navigation solution");
+  }
+  NavigationSolution result;
+  result.position_ecef_m = state.position_ecef_m;
+  result.velocity_ecef_mps = state.velocity_ecef_mps;
+  result.body_frd_to_ecef = state.body_frd_to_ecef;
+  result.source_time_ns = state.source_time_ns;
+  return result;
+}
+
 IdealNavigationBatch::IdealNavigationBatch(std::size_t capacity,
                                            const std::string& selected_model)
     : capacity_(capacity) {

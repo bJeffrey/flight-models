@@ -28,6 +28,19 @@ struct NavigationSolution {
 };
 
 /**
+ * Copy one physical sample as a zero-covariance ideal_test navigation solution.
+ * @param state Completed physical state in ECEF metres and metres/second, with
+ *        body-FRD attitude expressed as a proper rotation into ECEF.
+ * @param selected_model Must be exactly "ideal_test"; no alternate error model
+ *        is inferred or synthesized.
+ * @return Owning ECEF position, velocity, attitude and source time; covariance
+ *         is zero under the exact-copy ideal assumption.
+ * @throws std::invalid_argument for another model or invalid physical state.
+ */
+[[nodiscard]] NavigationSolution ideal_navigation_solution(
+    const PhysicalState& state, const std::string& selected_model);
+
+/**
  * Bounded reusable batch of ideal navigation samples from owning snapshots.
  * Numeric state is copied into separate reusable columns; later physical-state
  * changes cannot alter published solutions. Calls are single-owner and must

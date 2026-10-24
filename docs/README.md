@@ -46,5 +46,8 @@ now records local serialization and existing-consumer decoding acceptance.
 The [ideal navigation and generated PRD checkpoint](implementation_plan.md#ideal-navigation-and-generated-prd-checkpoint-2026-10-23)
 now accepts separate batched ideal state and schema-tested PRD production.
 Nonideal accuracy/error modeling and runtime publication remain open.
+The [fresh-run execution core and scenario bindings checkpoint](implementation_plan.md#fresh-run-execution-core-and-scenario-bindings-2026-10-23)
+joins scheduled motion, DIS and configured PRDs under direct elapsed-time calls.
+It does not yet connect the authoritative clock or live output transports.
 The end-to-end DIS/PRD/OMR conversion inventory and runtime/throughput gates remain
 pending; canonical ECEF truth and reported-navigation separation are preserved.

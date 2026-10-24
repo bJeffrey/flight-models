@@ -43,6 +43,13 @@ target_compile_options(flight_models_navigation PRIVATE -Wall -Wextra -Wpedantic
 target_include_directories(flight_models_navigation PUBLIC include)
 target_link_libraries(flight_models_navigation PUBLIC flight_models_state nlohmann_json::nlohmann_json)
 
+# Runtime orchestration composes domain libraries without adding transports to them.
+add_library(flight_models_runtime src/runtime.cpp)
+target_compile_features(flight_models_runtime PUBLIC cxx_std_17)
+target_compile_options(flight_models_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(flight_models_runtime PUBLIC include)
+target_link_libraries(flight_models_runtime PUBLIC flight_models_motion flight_models_dis flight_models_navigation)
+
 option(FLIGHT_MODELS_BUILD_BENCHMARK "Build the deterministic motion benchmark" OFF)
 if(FLIGHT_MODELS_BUILD_BENCHMARK)
   add_executable(motion-benchmark benchmarks/motion_benchmark.cpp)
@@ -54,6 +61,10 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(flight-runtime-test tests/cpp/runtime_test.cpp)
+  target_compile_options(flight-runtime-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(flight-runtime-test PRIVATE flight_models_runtime)
+  add_test(NAME flight-runtime-test COMMAND flight-runtime-test ${CMAKE_SOURCE_DIR})
   add_executable(navigation-test tests/cpp/navigation_test.cpp)
   target_compile_options(navigation-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries(navigation-test PRIVATE flight_models_navigation)
