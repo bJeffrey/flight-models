@@ -81,12 +81,15 @@ int main(int argc, char** argv) {
     publish(ws, fixture, "+OK", "nominal PRD publication");
 
     // Both choices are schema-valid; consumer identity interpretation is a separate contract.
-    Json subsystem_source = fixture;
-    auto& source = subsystem_source["PositionReportDetailed"]["MessageData"]
+    Json alternate_source = fixture;
+    auto& source = alternate_source["PositionReportDetailed"]["MessageData"]
                                       ["PositionReportData"][0]["PositionSource"];
-    source["SubsystemID"] = source.at("SystemID");
-    source.erase("SystemID");
-    publish(ws, subsystem_source, "+OK", "SubsystemID PRD publication");
+    const bool supplied_subsystem = source.contains("SubsystemID");
+    const std::string supplied_choice = supplied_subsystem ? "SubsystemID" : "SystemID";
+    const std::string alternate_choice = supplied_subsystem ? "SystemID" : "SubsystemID";
+    const Json identity = source.at(supplied_choice);
+    source = {{alternate_choice, identity}};
+    publish(ws, alternate_source, "+OK", "alternate PositionSource PRD publication");
 
     Json missing_timestamp = fixture;
     missing_timestamp["PositionReportDetailed"]["MessageHeader"].erase("Timestamp");
@@ -94,7 +97,7 @@ int main(int argc, char** argv) {
 
     // A schema error may close the ASB connection. The negative case is last,
     // so socket destruction completes cleanup without another protocol exchange.
-    std::cout << "Sleet accepted nominal and SubsystemID PRDs and rejected missing header timestamp\n";
+    std::cout << "Sleet accepted both PositionSource PRDs and rejected missing header timestamp\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "uci_fixture_probe: " << error.what() << '\n';

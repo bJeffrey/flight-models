@@ -12,6 +12,11 @@ cleanup() {
 }
 trap cleanup EXIT
 ./test.sh > "$output/build-test.log" 2>&1
+# Validate the current ideal-navigation producer output, including nanosecond
+# creation/validity timestamps, rather than only the hand-maintained fixture.
+docker compose run --pull never --rm -T -v "$output:/artifacts" dev \
+  build/position-report-test /src /artifacts/generated-prd.json > "$output/generate.log" 2>&1
+export PRD_FIXTURE_FILE="$output/generated-prd.json"
 # Test-only watchdog bounds health polling and synchronous probe I/O.
 if timeout 60 docker compose -p "$project" -f compose.schema-tests.yaml run --pull never --rm -T schema-test > "$output/schema.log" 2>&1; then
   tail -n 1 "$output/schema.log"

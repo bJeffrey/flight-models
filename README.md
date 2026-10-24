@@ -2,8 +2,9 @@
 
 C++17 flight-models migration work currently contains contract fixtures and
 validation tools, a typed motion-profile library, bounded SoA state storage and
-an initial scalar motion kernel, bounded waypoint/event driver and an OpenDIS7
-EntityState adapter. Runtime transport adapters remain pending. Start from the
+an initial scalar motion kernel, bounded waypoint/event driver, an OpenDIS7
+EntityState adapter and separate ideal-test navigation/PRD generation. Runtime
+transport adapters and nonideal navigation remain pending. Start from the
 [planning index](docs/README.md).
 
 Provision the maintained Docker toolchain once, then run offline contract tests:
@@ -26,7 +27,8 @@ its installed UCI 2.5 schema in an isolated ASB:
 ./test_sleet.sh
 ```
 
-The latter builds/tests, checks both PositionSource identity choices and a
+The latter builds/tests, generates a PRD through the ideal navigation model and
+production encoder, checks both PositionSource identity choices and a
 missing-header-timestamp rejection, saves dated logs, and tears down its ASB.
 It exposes no host ports and does not start or modify a normal scenario.
 
@@ -49,6 +51,17 @@ fixed fresh-run cohort. Samples are provisional until the whole interval commits
 they are not DIS/UCI messages. The [input contract](docs/motion_input_contract.md)
 documents supported programs, explicit resource bounds and deferred VMS/runtime
 behavior. Backend selection and population crossover remain unqualified.
+
+`IdealNavigationBatch` copies completed snapshots into separate reusable SoA
+columns. It requires explicit `ideal_test` selection, omits disabled entities,
+and reports exact position/velocity/attitude with zero covariance. That is an
+explicit test assumption, not a claim about navigation equipment accuracy.
+[`encode_position_report_detailed`](include/flight_models/position_report.h)
+accepts only reported navigation and explicit identity/security metadata. It
+projects the report to WGS-84 HAE/NED using shared math and formats creation and
+validity timestamps from authoritative simulation time. It reads no wall clock.
+Runtime reporting membership, nonideal error profiles and live publication remain
+open; see the [navigation checkpoint](docs/implementation_plan.md#ideal-navigation-and-generated-prd-checkpoint-2026-10-23).
 
 Run the bounded scalar benchmark in the same cached Docker image:
 

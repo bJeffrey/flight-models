@@ -43,6 +43,8 @@ The [bounded waypoint/event-driver checkpoint](implementation_plan.md#bounded-wa
 records the subsequent model acceptance. The
 [OpenDIS EntityState adapter checkpoint](implementation_plan.md#opendis-entitystate-adapter-checkpoint-2026-10-23)
 now records local serialization and existing-consumer decoding acceptance.
-Navigation/error-state and PRD implementation is the next bounded slice.
+The [ideal navigation and generated PRD checkpoint](implementation_plan.md#ideal-navigation-and-generated-prd-checkpoint-2026-10-23)
+now accepts separate batched ideal state and schema-tested PRD production.
+Nonideal accuracy/error modeling and runtime publication remain open.
 The end-to-end DIS/PRD/OMR conversion inventory and runtime/throughput gates remain
 pending; canonical ECEF truth and reported-navigation separation are preserved.

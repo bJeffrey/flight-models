@@ -15,7 +15,13 @@ services:
     working_dir: /src
     volumes:
       - .:/src:ro
-    command: [build/uci-fixture-probe, asb, '9000', tests/fixtures/uci_position_report_detailed_v2_5.json]
+      - type: bind
+        source: ${PRD_FIXTURE_FILE:-./tests/fixtures/uci_position_report_detailed_v2_5.json}
+        target: /test-input/prd.json
+        read_only: true
+        bind:
+          create_host_path: false
+    command: [build/uci-fixture-probe, asb, '9000', /test-input/prd.json]
     depends_on:
       asb:
         condition: service_healthy

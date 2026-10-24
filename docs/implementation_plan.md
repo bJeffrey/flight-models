@@ -279,6 +279,9 @@ explicit regression harness.
   and platform/EGI identity mapping, reporting membership and strict UCI schema
   conformance. Validate ideal and nonideal profiles separately. Stop before live
   CAL/recipient-routing acceptance; runtime wiring remains FM-RUNTIME-1.
+  The ideal-only SoA/PRD boundary now passes local model and generated-output
+  schema checks below. Nonideal parameters/statistics and entity-keyed noise
+  remain open; the retained covariance fixture is not an accuracy specification.
 - [x] **FM-DIS-1 — flight-models:** pin an OpenDIS revision/license record and
   build it in the maintained container environment, with the selected DIS version
   and examples disabled. Implement the adapter after FM-CONTRACT-1. Validate
@@ -891,10 +894,82 @@ normal scenario; live DIS publication, lifecycle/removal, PRD production, emitte
 source ownership/carriers, and end-to-end consumer/frame acceptance remain their
 integration gates. No throughput or live interoperability claim is made.
 
-Exact next bounded slice: **FM-NAV-PRD-1**, establish the typed navigation/error
+Next at this checkpoint (ideal portion implemented in the subsequent checkpoint):
+**FM-NAV-PRD-1**, establish the typed navigation/error
 state and ideal/nonideal reporting contract using the existing PRD fixture and
 accepted timing/accuracy references, then implement and validate the navigation
 model/PRD adapter. Preserve physical truth separation and source/creation times;
 do not expose physical truth as a nonideal navigation fallback. Emitter ownership
 and runtime/scenario integration still precede SuperCell retirement. New epoch
 and restore handling stay deferred until after deprecation.
+
+### Ideal navigation and generated PRD checkpoint (2026-10-23)
+
+The approved `ideal_test` portion of FM-NAV-PRD-1 is accepted. No approved numeric
+nonideal navigation profile was found in the owning contract; the retained PRD
+fixture's covariance is a schema/mapping specimen, not equipment accuracy. This
+slice therefore implements the explicitly approved ideal model and general
+reported-state wire boundary without inventing error values or qualifying
+nonideal performance. FM-NAV-PRD-1 stays open for that model and its statistics.
+
+Changed paths: `include/flight_models/navigation.h`, `src/navigation.cpp`,
+`include/flight_models/position_report.h`, `src/position_report.cpp`, their two
+focused tests, CMake, and the existing Sleet probe/Compose/wrapper and references.
+The ideal model copies enabled physical snapshot rows into separately owned
+reusable SoA columns. It requires explicit `ideal_test`, retains canonical IDs
+and source times, excludes disabled rows, and generates zero covariance. Staged
+publication preserves the prior batch on invalid input or capacity failure;
+returned solutions remain independent of later physical mutations. There is no
+implicit truth fallback for absent navigation. No numerical backend or throughput
+qualification is claimed.
+
+The PRD encoder takes only reported navigation plus explicit platform SystemID,
+EGI SubsystemID, security and solution-state metadata. It performs one reported
+ECEF-to-geodetic position conversion and derives the report's local NED frame.
+Shared math owns attitude, vector and full covariance transformations; no new
+mathematical implementation was added. All nine position/velocity cross entries
+are preserved. A nonzero-covariance reported-state fixture exercises this mapping
+without claiming nonideal-model behavior. The encoder expects model-validated
+symmetric PSD covariance and checks finite input/output. Runtime reporting-set
+selection remains separate from generating local navigation for each platform.
+
+Simulation time formatting is explicit: supplied scenario Unix epoch plus elapsed
+integer nanoseconds, formatted as UCI's existing Zulu xs:dateTime with nine
+fractional digits. Header creation time and position/velocity/orientation validity
+time remain distinct. The model consumes source time already present in its
+input; no new explicit advancement input, wall-clock read, FTRT flag or epoch
+recovery behavior is added. The installed UCI 2.5 XSD `DateTimeType` permits this
+precision, and the actual Sleet schema accepts the generated output.
+
+Validation: `./test_sleet.sh logs/20261023/navigation/schema` builds/tests in the
+maintained offline Release container. All nine CTest executables pass. The
+wrapper then generates a PRD from the actual ideal model/encoder and publishes it
+to an isolated Sleet ASB: both PositionSource choices pass, and a missing header
+timestamp fails as expected. The ASB/network are removed afterward. Unit checks
+cover separate state ownership, canonical ordering, disabled omission, zero
+covariance, invalid DCM and capacity rollback, fixture frame/covariance mapping,
+source versus creation nanoseconds, calendar rollover, negative Unix origins and
+int64 timestamp overflow. Focused independent review found no material blockers.
+
+Evidence: [full tests](../logs/20261023/navigation/schema/build-test.log),
+[generated PRD](../logs/20261023/navigation/schema/generated-prd.json),
+[Sleet results](../logs/20261023/navigation/schema/schema.log), and
+[cleanup](../logs/20261023/navigation/schema/cleanup.log).
+The normal short commands remain `./test.sh` and `./test_sleet.sh`.
+
+Remaining gates: approved nonideal error-profile semantics/values, reproducible
+entity-keyed noise and covariance consistency; operational identity/reporting-set
+configuration; runtime clock, route/control ingress and DIS/PRD publication;
+emitter-source ownership/carriers; consumer/system performance and retirement
+acceptance. Ideal mode is explicitly test-only and must remain selected/labeled
+when used for initial scenario acceptance; it cannot establish nonideal accuracy.
+
+Exact next bounded SuperCell-migration slice: reconcile **FM-CONTRACT-1 runtime
+configuration** with the existing scenario/startup adapters: platform/DIS/EGI
+identity, configured local navigation/reporting membership, physical DIS output
+and per-platform ASB endpoints, plus authoritative clock input. Reuse the approved
+ideal profile for the initial runtime test and keep nonideal acceptance open.
+Audit retained emitter source/carrier ownership before moving its behavior. That
+configuration contract feeds FM-RUNTIME-1 clock/output wiring; full operational
+control/emitter and live acceptance remain prerequisites to retirement. New epoch
+and restore handling remain deferred until after SuperCell deprecation.

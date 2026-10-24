@@ -36,6 +36,13 @@ target_compile_options(flight_models_dis PRIVATE -Wall -Wextra -Wpedantic -Werro
 target_include_directories(flight_models_dis PUBLIC include)
 target_link_libraries(flight_models_dis PUBLIC flight_models_state PRIVATE OpenDIS::OpenDIS7)
 
+# Reported navigation is a separate state owner; the PRD adapter never reads truth.
+add_library(flight_models_navigation src/navigation.cpp src/position_report.cpp)
+target_compile_features(flight_models_navigation PUBLIC cxx_std_17)
+target_compile_options(flight_models_navigation PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(flight_models_navigation PUBLIC include)
+target_link_libraries(flight_models_navigation PUBLIC flight_models_state nlohmann_json::nlohmann_json)
+
 option(FLIGHT_MODELS_BUILD_BENCHMARK "Build the deterministic motion benchmark" OFF)
 if(FLIGHT_MODELS_BUILD_BENCHMARK)
   add_executable(motion-benchmark benchmarks/motion_benchmark.cpp)
@@ -47,6 +54,14 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(navigation-test tests/cpp/navigation_test.cpp)
+  target_compile_options(navigation-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(navigation-test PRIVATE flight_models_navigation)
+  add_test(NAME navigation-test COMMAND navigation-test)
+  add_executable(position-report-test tests/cpp/position_report_test.cpp)
+  target_compile_options(position-report-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(position-report-test PRIVATE flight_models_navigation)
+  add_test(NAME position-report-test COMMAND position-report-test ${CMAKE_SOURCE_DIR})
   add_executable(dis-entity-state-test tests/cpp/dis_entity_state_test.cpp)
   target_compile_options(dis-entity-state-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries(dis-entity-state-test PRIVATE flight_models_dis OpenDIS::OpenDIS7)
