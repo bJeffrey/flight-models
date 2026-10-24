@@ -264,6 +264,8 @@ explicit regression harness.
   descent, limit saturation and waypoint progression. Compare identical elapsed
   scenario time across declared substep policies with explicit tolerances.
   Stop at local deterministic model acceptance, without aerodynamic claims.
+  The first scalar control/motion kernel is implemented in the checkpoint below;
+  waypoint progression and command/output event boundaries remain unfinished.
 - [ ] **FM-EMITTER-1 — flight-models:** after source ownership/carrier review and
   FM-SOA-1, implement batched emitter-source evolution/events using accepted
   profiles. Validate same event times/content under supported pacing, partitioning
@@ -550,4 +552,215 @@ motion/waypoint kernels against this state/profile contract. Keep the same API
 for standard C++, Eigen and MKL implementation choices; qualify backend and
 population crossover with actual kernels and packing costs before configuring
 production dispatch. New epoch/restore work remains deferred until after
+SuperCell deprecation.
+
+### Initial bounded motion kernel checkpoint (2026-10-23)
+
+`include/flight_models/bounded_motion.h` and `src/bounded_motion.cpp` add
+`advance_motion`: a transport-independent scalar implementation over reusable
+SoA cohort scratch. Moving entities for one profile advance from their own source
+times to a common scenario-nanosecond endpoint. Fixed, disabled and other-profile
+entities retain their state and source times. One commit publishes the cohort
+only after every row succeeds; invalid inputs, insufficient scratch and exhausted
+integration budgets leave live state unchanged.
+
+The kernel uses shared WGS-84 geodesy and angle wrapping, bounded midpoint
+integration with control-capture splits, shortest-path heading changes with a
+clockwise half-turn tie, horizontal acceleration/deceleration and independent
+HAE climb/descent. Body attitude follows heading and climb angle with zero roll.
+Endpoint acceleration and angular velocity include local-frame transport rather
+than assuming constant-speed motion has zero ECEF acceleration. Source timestamps
+and regular step boundaries remain integer nanoseconds; control-capture splits
+use relative double seconds within each step. This is synthetic point kinematics,
+without an aerodynamic or vertical-acceleration model.
+
+This checkpoint does **not** complete FM-DYNAMICS-1. Waypoint capture/progression,
+scheduled desired-command application, independent publication deadlines and
+their bounded event storage are not implemented. In particular, this kernel
+holds the admitted desired controls constant throughout each call; a future
+event driver must split calls at actual command/output boundaries. Do not wire
+it as a replacement runtime or claim DIS/PRD acceptance yet. Eigen/MKL execution,
+indexed sparse dispatch and measured population thresholds also remain pending.
+
+Changed paths: bounded-motion public header/source, analytical/convergence and
+failure tests, CMake target, top-level test description, README/index and this
+owning plan. The ecosystem master lane links to this checkpoint.
+
+Validation: maintained `./test.sh` builds C++17 with warnings as errors and passes
+all four test executables ([log](../logs/20261023/dynamics/tests.log)). New cases
+cover analytical equatorial travel, local constant-rate turns (1 cm tangent-plane
+tolerance over 200 m), clockwise half-turns and heading wrap, speed/HAE target
+capture, asymmetric climb/descent bounds, excluded cohorts, coherent initial
+attitude, zero-duration preservation and atomic rejection. The combined
+turn/acceleration/climb fixture agrees within 1 mm in ECEF at 10 s between 10 ms
+and 1 ms substeps; aligned 1 s and 250 ms input partitions agree within 10 μm.
+These are local numerical-fixture tolerances, not sensor/range-difference accuracy
+requirements. Exact 200-step work budgets and off-grid control captures also pass.
+No throughput or backend-crossover claim is made. Focused independent review
+identified the reproduced vertical-rate reprojection roundoff issue; it was
+fixed and subsequent accounting/derivative review found no blockers.
+
+The shared-math extraction, flight-models adoption and scalar optimization
+requested after this checkpoint are now complete; see the acceptance checkpoint
+below. FM-DYNAMICS-1's waypoint guidance/scheduled-event driver remains open.
+Guidance still requires swept 3D capture, ordered transitions, exact scenario-time
+command/output boundaries and atomic failure on event-budget exhaustion.
+Backend/population qualification and the owning OpenDIS/PRD adapter gates remain
+pending. New epoch/restore work stays deferred until after SuperCell deprecation.
+
+### Coordinate conversion and native message frames (2026-10-23)
+
+Accepted strategy: preserve canonical ECEF physical truth and track/platform
+state, while retaining native measurement observables. Geodetic positions and
+local NED/ENU bases are derived geometry, not competing authoritative state.
+The [state/time contract](state_time_contract.md#coordinate-conversion-boundaries)
+records message-boundary, precision and cache-validity rules. Existing mappings
+are recorded in the [adapter inventory](adapter_contract.md),
+[sensor interface](/home/jeffs/git/sensor-models/docs/reference/uci_sensor_interface.md)
+and [AST UCI plan](/home/jeffs/git/ast/docs/ast_uci_interface_plan.md).
+
+Static inspection of the initial scalar kernel finds two ECEF-to-geodetic
+conversions, one geodetic-to-ECEF conversion, and three NED-to-ECEF matrix
+constructions/vector rotations per integration segment. Intermediate endpoint
+velocities are calculated even when only the final value is consumed. Repeated
+initial/final frame construction also exists outside the loop. These are code
+operation counts, not measured bottlenecks or accepted throughput evidence.
+
+The subsequent ownership audit found WGS-84 eccentricity/prime-vertical-radius
+formulas duplicated between `src/bounded_motion.cpp` and
+`math/src/coordinates/geodetic.cpp`. Flight-models also implements body-FRD/NED
+attitude construction, matrix composition/validation and local-frame transport
+without shared APIs. Math already supplies geodetic/ECEF conversions, local-frame
+rotations, vector rotation/transpose and angle wrapping; keep using those.
+Its legacy rotation/quaternion/vector/ellipsoid headers are empty placeholders,
+not implementations to call. Small scalar expressions alone do not justify a
+new abstraction; extraction should address reusable, convention-controlled work.
+
+- [x] **Math prerequisite:** add narrowly scoped, backend-independent primitives
+  under `math/include/math/` for the required attitude construction/composition,
+  proper-rotation validation, WGS-84 curvature geometry and local-frame transport.
+  Reuse the curvature calculation inside math's existing geodesy rather than
+  introducing another copy. Document row-major ordering, FRD/NED/ECEF conventions,
+  radians/metres, singularities, explicit validation tolerances and error behavior.
+  Keep aircraft limits and control policy out of math. Validate with independent
+  known-axis/rotation cases, reflection/non-orthogonal rejection, ellipsoid
+  reference cases and transport/derivative checks under math's maintained tests.
+- [x] **Flight-models adoption:** after the shared primitives pass, replace local
+  reusable calculations and use existing shared constants. Keep speed/altitude
+  target evolution, control captures, work budgets, integration scheduling and
+  model-specific derivative assembly in flight-models. Preserve a pre-change
+  baseline artifact; run analytical/convergence and frame/derivative regressions
+  plus focused independent review. This adoption is a separate bounded slice
+  following the math prerequisite, not a second implementation of its formulas.
+- [x] After shared-math adoption, optimize the scalar kernel before waypoint/event
+  expansion: construct endpoint velocity only when needed, reuse geometry at the
+  same state/time, and evaluate replacing the altitude-correction forward
+  conversion with a shared, tested ellipsoid-normal correction. Preserve necessary
+  midpoint geometry, HAE control, proper attitude and frame-transport derivatives;
+  do not remove conversions merely to reduce a count.
+- [ ] Audit the DIS truth → sensor geometry → OMR → AST path and the separate
+  navigation → PRD → consumer path against actual native fields. Identify each
+  required position, vector, attitude and covariance transformation and repeated
+  derivation. Record findings here; implementation in sensor-models/AST belongs
+  to their existing owning plans as separate slices. Comms forwards message
+  content without coordinate transformations.
+- [x] Validate the optimized scalar implementation against the existing
+  analytical/convergence fixtures and declared numerical tolerances. Cover
+  longitude wrap, supported latitude extremes, altitude bounds, climb/descent
+  and turn derivatives. Benchmark small and large populations with identical
+  workloads, warmup and repeated runs; record conversion counts and steady-state
+  timing in dated logs. Use the preserved baseline for the comparison. Qualify
+  backend/batch dispatch only after this scalar baseline.
+
+Completion means tested shared-math ownership, flight-models adoption, a reviewed
+conversion inventory, validated scalar changes and reproducible before/after
+evidence. No end-to-end conversion minimization or
+truth-accuracy improvement is claimed by accepting this strategy alone. DIS
+wire quantization and nonideal PRD/OMR accuracy remain their adapter/model gates.
+
+### Shared-math adoption and scalar conversion checkpoint (2026-10-23)
+
+Shared primitives now live in `math/include/math/coordinates/{geometry,geodetic}.hpp`
+and their source files: FRD/NED attitude construction, rotation composition and
+validation, cross products, WGS-84 curvature radii, local-frame geometry,
+frame-transport rates and ellipsoid-normal altitude replacement. Existing
+geodetic conversions reuse the curvature implementation. Aircraft/control limits
+and model-specific derivative assembly remain in flight-models. A frame is
+derived for one source state; altitude-only correction updates its origin HAE
+without changing its latitude/longitude basis. Geographic-pole transport retains
+the finite selected-meridian case for exactly zero east velocity and explicitly
+rejects singular eastward motion.
+
+Flight-models' scalar kernel now reuses that geometry for heading extraction,
+coherence validation, prediction and endpoint output. It retains the two
+ECEF-to-geodetic evaluations required by the current midpoint/altitude scheme;
+it replaces each segment's forward conversion with a shared normal correction
+and constructs endpoint velocity once per advancing row. Attitude, velocity and
+derivatives use the same final frame. Per segment the static operation counts
+fall from one to zero geodetic-to-ECEF conversions, and from three to two local
+rotation constructions and vector rotations; fixed per-row work is separate.
+Canonical stored position/velocity/acceleration remain float64 ECEF.
+
+Validation/artifacts: the maintained Docker image builds both repositories with
+warnings as errors. The standalone math suite and flight-models suite each have
+four passing test executables. Math tests cover independent axis/sign/composition
+cases, invalid rotations, curvature, frame transport including polar cases and
+normal correction. Flight regressions retain the analytical and substep fixtures
+and add longitude wrap at ±85°/equator and altitude bounds, plus endpoint
+velocity/acceleration versus neighboring trajectory samples. The adoption-only
+kernel and test log were preserved before optimization. See dated
+[math tests](../logs/20261023/coordinates/math-tests.log),
+[adoption tests](../logs/20261023/coordinates/adoption-tests.log) and
+[optimized tests](../logs/20261023/coordinates/optimized-tests.log).
+Independent review checked mathematical conventions and the cached-frame
+integration sequence; validation and polar-compatibility findings were resolved.
+
+The original working-tree kernel and shared math source are preserved under
+`logs/20261023/coordinates/baseline/`, with source hashes and original git IDs.
+The benchmark's versioned workload/schema and validated synthetic profile are
+identical for baseline and candidate. Release builds run in the cached offline
+Docker image, with one warmup and five measured repeats per population. Both
+execution orders were run, producing ten timing samples per implementation.
+Commands apply at the start of their due intervals, with continuous absolute
+simulation phase across warmup/repeats; the harness requires an interval-aligned
+command period. Timings include command gather/commit and motion
+gather/integration/commit, excluding initialization and CSV output.
+
+| Moving entities | Intervals per repeat | Baseline median updates/s | Optimized median updates/s | Median change |
+| --- | --- | --- | --- | --- |
+| 1 | 10000 | 89630 | 95752 | +6.8% |
+| 32 | 1000 | 102880 | 109747 | +6.7% |
+| 1000 | 30 | 104067 | 110946 | +6.6% |
+| 10000 | 12 | 102845 | 109769 | +6.7% |
+
+These are per-entity interval updates, each normally containing ten 10 ms
+substeps, with additional control captures as needed. The one-entity timing
+ranges overlap; medians describe this machine/workload, not a guaranteed speedup.
+Each population has a different repeat duration, so cross-population values do
+not select a dispatch crossover. Full ranges/raw samples, compiler/CPU/image
+identity, source hashes and exact commands are in the
+[comparison](../logs/20261023/coordinates/comparison-final.txt) and
+[metadata](../logs/20261023/coordinates/benchmark-metadata.txt).
+
+All 11033 final rows match in identity, time and desired commands; repeated runs
+of each implementation produce byte-identical final rows. Maximum differences
+from the original are 0.441 mm ECEF position, 1.11e-9 m/s velocity, 3.45e-11 m/s²
+acceleration, 1.03e-11 DCM Frobenius norm and 1.87e-15 rad/s body angular rate.
+These compare implementations, not physical truth against external ground truth,
+and introduce no new sensor/range-difference accuracy requirement. Full rows and
+source manifests are retained beside the results. Earlier unqualified build and
+command-timing runs are explicitly superseded by these final artifacts.
+
+Changed paths: shared math public headers/source and coordinate tests/CMake/docs;
+flight-models kernel, geometry regressions, optional benchmark target,
+`benchmarks/{motion_benchmark.cpp,workload.json,workload.schema.json}`,
+`benchmark.sh` and owning references. Reproduce the current configured benchmark
+with `./benchmark.sh`; the metadata records frozen-baseline comparison commands.
+The requested shared-math/adoption/optimization slice is complete. This measures
+the scalar path, not Eigen/MKL, parallel execution or full scenario throughput.
+
+Next implementation slice: FM-DYNAMICS-1 waypoint guidance and scheduled-event
+boundaries. The cross-service DIS/PRD/OMR conversion inventory remains a separate
+pending task before adapter acceptance; numerical backend/population dispatch
+also remains unqualified. New epoch/restore handling stays deferred until after
 SuperCell deprecation.

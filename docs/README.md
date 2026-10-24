@@ -23,9 +23,8 @@ epoch/restore handling follows SuperCell deprecation; it is not a prerequisite
 for the replacement runtime.
 
 The [bounded motion/input contract](motion_input_contract.md) and typed profile
-loader now establish the local prerequisites for FM-SOA-1. That is the next
-implementation slice; remaining operational control/emitter contracts stay open
-for their adapters and live acceptance.
+loader establish the local motion prerequisites. Remaining operational
+control/emitter contracts stay open for their adapters and live acceptance.
 
 FM-SOA-1 follows the implementation plan's
 [numerical backend and population policy](implementation_plan.md#numerical-backends-and-population-aware-execution-2026-10-23):
@@ -35,4 +34,12 @@ large batches require separate cost/qualification checks.
 
 [SoA physical-state storage](state_storage.md) now implements FM-SOA-1 with indexed
 views, reusable cohort staging and owning snapshots. The next local development
-slice is FM-DYNAMICS-1; numerical backend/dispatch qualification remains pending.
+slice is FM-DYNAMICS-1. Its first scalar motion kernel is implemented; waypoint
+and event-boundary integration remain open in the owning plan. Numerical
+backend/dispatch qualification remains pending.
+
+The [shared-math adoption and scalar optimization checkpoint](implementation_plan.md#shared-math-adoption-and-scalar-conversion-checkpoint-2026-10-23)
+is complete, with passing math/flight tests and a frozen-baseline benchmark.
+Waypoint/event implementation is next. The end-to-end DIS/PRD/OMR conversion
+inventory and numerical backend/dispatch qualification remain pending; canonical
+ECEF truth and reported-navigation separation are preserved.

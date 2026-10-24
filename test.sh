@@ -1,5 +1,5 @@
 #!/bin/sh
-# Contract fixtures only: no scenario processes, network services or dynamics.
+# Local contract, storage and motion checks; no scenario or network services.
 set -eu
 cd "$(dirname "$0")"
 docker compose run --pull never --rm -T dev sh -ec '

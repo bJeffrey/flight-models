@@ -29,12 +29,51 @@ geodetic/ECEF/ENU conversion and NED rotation; `math/core/types.hpp` defines the
 row-major matrix convention. The similarly named legacy
 `include/coordinates/{quaternions,rotations}.hpp` and
 `include/tracking_math/{covariance,fusion_primitives}.hpp` are empty placeholders,
-not reusable implementations. Numerical backends are standard C++, Eigen and
-Intel MKL behind a stable developer-facing API, following the AST reference in
-the owning plan. No backend is yet implemented/qualified in flight-models.
+not reusable implementations. Shared attitude composition/validation and
+WGS-84 curvature/local-frame transport now live under `math/coordinates/`;
+flight-models supplies model controls and derivative assembly. Numerical backend
+candidates are standard C++, Eigen and Intel MKL behind a stable developer-facing
+API, following the AST reference in the owning plan. The initial scalar standard
+C++ kernel exists; Eigen/MKL execution and backend dispatch remain unqualified.
 Keep efficient small-update and large-batch paths separate from backend choice;
 benchmark their crossover when adding actual kernels. No quaternion API is
 selected by this contract.
+
+## Coordinate conversion boundaries
+
+Physical truth remains float64 ECEF position, velocity and acceleration with
+body-FRD-to-ECEF attitude. Guidance may use true heading and HAE, with temporary
+local frames for their evaluation. Retain midpoint geometry and Earth-curvature
+effects; reducing conversion counts must not change the model's frame semantics.
+
+| Boundary | Selected handling |
+| --- | --- |
+| DIS EntityState | For the selected world-frame dead-reckoning mapping, serialize ECEF truth directly; convert attitude representation and apply field-specific wire precision only in the adapter. Do not route position through geodetic coordinates. Other dead-reckoning mappings require an explicit frame audit. |
+| PRD | Current mapping uses WGS-84 geodetic HAE position, NED velocity/covariance and reported orientation. Derive these once per navigation sample at publication; consumers convert once into their canonical state. Include position/velocity cross-covariance in frame transformations. |
+| OMR | Preserve native range/angle, frequency and differential time/frequency observations, their declared reference frames and covariance. Evaluate predictions from ECEF states using receiver-local geometry where needed. Do not manufacture Cartesian positions merely to unify frames. |
+
+Physical truth and reported navigation remain separate. Nonideal PRD geometry,
+orientation and covariance must derive from the navigation solution, not from a
+cached physical-truth frame. An explicit ideal-test profile may make their values
+equal without merging their ownership or provenance. OMR truth-based measurement
+generation belongs to sensor-models; operational AST inputs do not acquire truth.
+
+Reuse geodetic position, local basis, trigonometric terms and rotations for the
+same source state/time where practical. Receiver geometry can be reused across
+targets within a collection only when the reference state, reference frame and
+validity time match. Distinct receiver arrival times require their own predicted
+geometry; publication time is not a substitute. State changes invalidate derived
+geometry, including changes to a navigation solution at the same timestamp.
+Keep caches bounded and scoped to actual consumers; do not introduce a second
+authoritative position representation.
+
+Retain float64 internal truth and apply each DIS field's quantization at encoding.
+Repeated conversion cannot recover precision lost on the wire. Preserve fine
+signed TDOA durations independently of rounded absolute timestamps, along with
+source times, frame identity, units and covariance provenance. Numerical
+optimization must pass analytical/convergence tests and adapter-specific accuracy
+checks before acceptance. The owning plan records the pending audit and benchmark;
+these rules are not evidence that the full pipeline is already optimized.
 
 ## Clock and scheduling
 
