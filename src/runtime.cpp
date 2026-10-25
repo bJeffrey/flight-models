@@ -196,6 +196,10 @@ Runtime::~Runtime() = default;
 Runtime::Runtime(Runtime&&) noexcept = default;
 Runtime& Runtime::operator=(Runtime&&) noexcept = default;
 std::vector<RuntimeOutput> Runtime::advance_to(std::int64_t time_ns) {
+  return advance_to(time_ns, time_ns);
+}
+std::vector<RuntimeOutput> Runtime::advance_to(std::int64_t time_ns, std::int64_t creation_time_ns) {
+  if (creation_time_ns < time_ns) throw std::invalid_argument("creation time cannot precede processed boundary");
   if (impl_->failed) throw std::logic_error("runtime is unusable after an output encoding failure");
   if (!impl_->started && time_ns != 0) throw std::invalid_argument("first runtime advance must be time zero");
   impl_->driver->advance_to(time_ns);
@@ -214,7 +218,7 @@ std::vector<RuntimeOutput> Runtime::advance_to(std::int64_t time_ns) {
         output.dis = encode_entity_state(entity.dis, sample.state, entity.mode, epoch_hour);
       } else if (entity.reports) {
         const auto navigation = ideal_navigation_solution(sample.state, impl_->profile.navigation);
-        output.prd = encode_position_report_detailed(entity.prd, navigation, impl_->epoch_unix_ns, time_ns);
+        output.prd = encode_position_report_detailed(entity.prd, navigation, impl_->epoch_unix_ns, creation_time_ns);
       }
       result.push_back(std::move(output));
     }

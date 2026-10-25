@@ -1,0 +1,127 @@
+{
+  "capacity": 3,
+  "profile_path": "/src/config/profiles/synthetic_fixed_wing.json",
+  "profile_schema_path": "/src/config/motion_profile.schema.json",
+  "scenario_epoch_unix_ns": 1792800000000000000,
+  "scenario_epoch_utc": "2026-10-24T00:00:00Z",
+  "run_id": "flight-process-smoke",
+  "end_time_ns": 400000000,
+  "limits": {
+    "max_commands": 0,
+    "max_waypoints": 0,
+    "max_samples": 128,
+    "max_transitions": 16,
+    "max_events": 128
+  },
+  "transport": {
+    "nats_url": "nats://nats:4222",
+    "clock_subject": "sim.time.tick",
+    "dis_host": "smoke",
+    "dis_port": 3000,
+    "owp_service_id": "contract-test",
+    "clock_poll_timeout_ms": 100,
+    "operation_timeout_ms": 3000,
+    "pending_message_limit": 1024,
+    "pending_byte_limit": 4194304,
+    "clock_replay_window": 128
+  },
+  "entities": [
+    {
+      "id": "blue-a",
+      "mode": "moving",
+      "latitude_rad": 0.201,
+      "longitude_rad": -0.3,
+      "altitude_hae_m": 1000.0,
+      "heading_rad": 0.4,
+      "horizontal_speed_mps": 120.0,
+      "dis": {
+        "exercise_id": 1,
+        "site_id": 2,
+        "application_id": 3,
+        "entity_id": 1,
+        "force_id": 1,
+        "type": {
+          "kind": 1,
+          "domain": 2,
+          "country": 225,
+          "category": 1,
+          "subcategory": 0,
+          "specific": 0,
+          "extra": 0
+        },
+        "marking": "blue-a"
+      },
+      "prd": {
+        "platform_system_id": "58087a47-53e1-53e8-a811-10f024f89b81",
+        "navigation_subsystem_id": "1750e9e0-ab09-5a48-97ce-e0b4e5663631",
+        "classification": "U",
+        "owner_government": "USA",
+        "navigation_solution_state": "BLENDED",
+        "asb_url": "ws://asb-1:9000/owp",
+        "topic": "contract.prd"
+      }
+    },
+    {
+      "id": "blue-b",
+      "mode": "moving",
+      "latitude_rad": 0.202,
+      "longitude_rad": -0.3,
+      "altitude_hae_m": 1000.0,
+      "heading_rad": 0.4,
+      "horizontal_speed_mps": 120.0,
+      "dis": {
+        "exercise_id": 1,
+        "site_id": 2,
+        "application_id": 3,
+        "entity_id": 2,
+        "force_id": 1,
+        "type": {
+          "kind": 1,
+          "domain": 2,
+          "country": 225,
+          "category": 1,
+          "subcategory": 0,
+          "specific": 0,
+          "extra": 0
+        },
+        "marking": "blue-b"
+      },
+      "prd": {
+        "platform_system_id": "58087a47-53e1-53e8-a811-10f024f89b82",
+        "navigation_subsystem_id": "1750e9e0-ab09-5a48-97ce-e0b4e5663632",
+        "classification": "U",
+        "owner_government": "USA",
+        "navigation_solution_state": "BLENDED",
+        "asb_url": "ws://asb-2:9000/owp",
+        "topic": "contract.prd"
+      }
+    },
+    {
+      "id": "red-fixed",
+      "mode": "fixed",
+      "latitude_rad": 0.203,
+      "longitude_rad": -0.3,
+      "altitude_hae_m": 1000.0,
+      "heading_rad": 0.4,
+      "horizontal_speed_mps": 0.0,
+      "dis": {
+        "exercise_id": 1,
+        "site_id": 2,
+        "application_id": 3,
+        "entity_id": 3,
+        "force_id": 2,
+        "type": {
+          "kind": 1,
+          "domain": 2,
+          "country": 225,
+          "category": 1,
+          "subcategory": 0,
+          "specific": 0,
+          "extra": 0
+        },
+        "marking": "red-fixed"
+      },
+      "prd": null
+    }
+  ]
+}

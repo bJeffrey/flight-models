@@ -1,0 +1,45 @@
+# Isolated process transport smoke test; only the process, NATS, and two ASBs join this network.
+services:
+  nats:
+    image: nats:2
+    command: ["-js", "-m", "8222"]
+  asb-1:
+    image: ${SLEET_IMAGE:-registry.gitlab.com/open-arsenal/ams-gra/hello-world-sk/infra/sleet:latest}
+    command: [/opt/sleet/config/server.toml]
+    volumes:
+      - ./tests/sleet:/opt/sleet/config:ro
+    healthcheck:
+      test: [CMD-SHELL, 'sleet --health-check || exit 1']
+      interval: 1s
+      timeout: 3s
+      retries: 20
+  asb-2:
+    image: ${SLEET_IMAGE:-registry.gitlab.com/open-arsenal/ams-gra/hello-world-sk/infra/sleet:latest}
+    command: [/opt/sleet/config/server.toml]
+    volumes:
+      - ./tests/sleet:/opt/sleet/config:ro
+    healthcheck:
+      test: [CMD-SHELL, 'sleet --health-check || exit 1']
+      interval: 1s
+      timeout: 3s
+      retries: 20
+  process-smoke:
+    image: flight-models-dev:local
+    working_dir: /src
+    volumes:
+      - .:/src
+      - type: bind
+        source: ${FLIGHT_PROCESS_ARTIFACTS:?set FLIGHT_PROCESS_ARTIFACTS to an artifact directory}
+        target: /artifacts
+        bind:
+          create_host_path: false
+      - ../comms-models:/comms-models:ro
+      - ../sensor-models:/sensor-models:ro
+    command: [build/flight-process-smoke, build/flight-models-run, tests/fixtures/runtime_process.json, config/runtime.schema.json, /artifacts]
+    networks:
+      default:
+        aliases: [smoke]
+    depends_on:
+      nats: {condition: service_started}
+      asb-1: {condition: service_healthy}
+      asb-2: {condition: service_healthy}

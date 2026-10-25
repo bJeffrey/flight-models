@@ -48,6 +48,9 @@ now accepts separate batched ideal state and schema-tested PRD production.
 Nonideal accuracy/error modeling and runtime publication remain open.
 The [fresh-run execution core and scenario bindings checkpoint](implementation_plan.md#fresh-run-execution-core-and-scenario-bindings-2026-10-23)
 joins scheduled motion, DIS and configured PRDs under direct elapsed-time calls.
-It does not yet connect the authoritative clock or live output transports.
+The [fresh-run clock/output process checkpoint](implementation_plan.md#fresh-run-clock-and-output-process-2026-10-24)
+now records deployment-schema, authoritative clock, direct UDP and platform ASB
+acceptance using an isolated process smoke test. Normal ecosystem startup,
+operational controls/emitter contracts and full scenario acceptance remain open.
 The end-to-end DIS/PRD/OMR conversion inventory and runtime/throughput gates remain
 pending; canonical ECEF truth and reported-navigation separation are preserved.

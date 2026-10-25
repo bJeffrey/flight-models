@@ -289,6 +289,9 @@ void MotionDriver::advance_to(std::int64_t time_ns) {
     x.refresh_guidance();
     const MutableStateColumns columns = x.staged.columns();
     for (std::size_t row = 0; row < x.staged.size(); ++row) {
+      // Flight-envelope desired controls apply only to moving rows. A fixed
+      // ground entity legitimately has zero speed and may lie below flight HAE.
+      if (x.staged.modes()[row] != EntityMode::moving) continue;
       if (columns.horizontal_speed_mps[row] < x.profile.flight_envelope.min_speed_mps ||
           columns.horizontal_speed_mps[row] > x.profile.flight_envelope.max_speed_mps ||
           columns.altitude_hae_m[row] < x.profile.flight_envelope.min_altitude_hae_m ||

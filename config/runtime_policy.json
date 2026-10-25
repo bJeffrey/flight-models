@@ -1,0 +1,25 @@
+{
+  "capacity": 3,
+  "profile_path": "/src/config/profiles/synthetic_fixed_wing.json",
+  "profile_schema_path": "/src/config/motion_profile.schema.json",
+  "limits": {
+    "max_commands": 0,
+    "max_waypoints": 0,
+    "max_samples": 128,
+    "max_transitions": 16,
+    "max_events": 128
+  },
+  "transport": {
+    "nats_url": "nats://nats:4222",
+    "clock_subject": "sim.time.tick",
+    "dis_host": "smoke",
+    "dis_port": 3000,
+    "owp_service_id": "contract-test",
+    "clock_poll_timeout_ms": 100,
+    "operation_timeout_ms": 3000,
+    "pending_message_limit": 1024,
+    "pending_byte_limit": 4194304,
+    "clock_replay_window": 128
+  },
+  "description": "Synthetic three-platform transport smoke policy; change explicit endpoints/limits for deployment. No scenario/FTRT qualification."
+}

@@ -1,0 +1,20 @@
+# Owning runtime service. Orchestration supplies network and endpoint bindings.
+services:
+  flight-models:
+    image: flight-models-dev:local
+    working_dir: /src
+    init: true
+    networks: [simulation]
+    command: [build/flight-models-run, /runtime/config.json, /src/config/runtime.schema.json]
+    volumes:
+      - .:/src:ro
+      - type: bind
+        source: ${FLIGHT_RUNTIME_CONFIG:?Set FLIGHT_RUNTIME_CONFIG to generated runtime JSON}
+        target: /runtime/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+networks:
+  simulation:
+    external: true
+    name: ${FLIGHT_RUNTIME_NETWORK:?Set FLIGHT_RUNTIME_NETWORK to the existing simulation network}

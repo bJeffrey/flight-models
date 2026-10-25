@@ -9,9 +9,9 @@ namespace {
 using nlohmann::json;
 
 json entity(bool prd, int dis_id) {
-  json value{{"id", prd ? "reported" : "red"}, {"mode", "moving"},
-      {"latitude_rad", 0.2}, {"longitude_rad", -0.3}, {"altitude_hae_m", 1000.0},
-      {"heading_rad", 0.4}, {"horizontal_speed_mps", 120.0},
+  json value{{"id", prd ? "reported" : "red"}, {"mode", prd ? "moving" : "fixed"},
+      {"latitude_rad", 0.2}, {"longitude_rad", -0.3}, {"altitude_hae_m", prd ? 1000.0 : 0.0},
+      {"heading_rad", 0.4}, {"horizontal_speed_mps", prd ? 120.0 : 0.0},
       {"dis", {{"exercise_id", 1}, {"site_id", 2}, {"application_id", 3},
           {"entity_id", dis_id}, {"force_id", 1},
           {"type", {{"kind", 1}, {"domain", 2}, {"country", 225}, {"category", 1},

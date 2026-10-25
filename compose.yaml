@@ -6,6 +6,20 @@ services:
     working_dir: /src
     volumes:
       - .:/src
+      # Test-only OWP observer shared with the communications transport harness.
+      - type: bind
+        source: ${FLIGHT_COMMS_REPO:-../comms-models}
+        target: /comms-models
+        read_only: true
+        bind:
+          create_host_path: false
+      # Compile authoritative protobuf definitions from their owning repository.
+      - type: bind
+        source: ${AI_BM_SIM_REPO:-../ai-bm-sim}/schemas
+        target: /ai-bm-sim/schemas
+        read_only: true
+        bind:
+          create_host_path: false
       # Shared convention-controlled types/math stay owned by the math repository.
       - type: bind
         source: ${FLIGHT_MATH_REPO:-../math}

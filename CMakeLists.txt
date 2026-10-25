@@ -50,6 +50,29 @@ target_compile_options(flight_models_runtime PRIVATE -Wall -Wextra -Wpedantic -W
 target_include_directories(flight_models_runtime PUBLIC include)
 target_link_libraries(flight_models_runtime PUBLIC flight_models_motion flight_models_dis flight_models_navigation)
 
+# Domain libraries remain free of protobuf, NATS, WebSocket and process lifecycle.
+find_package(Protobuf REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system)
+find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(NATS REQUIRED IMPORTED_TARGET libnats)
+set(FLIGHT_SIM_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ai-bm-sim/schemas" CACHE PATH
+    "Authoritative simulation clock protobuf directory")
+protobuf_generate_cpp(FLIGHT_CLOCK_SOURCES FLIGHT_CLOCK_HEADERS
+    "${FLIGHT_SIM_SCHEMA_DIR}/common.proto" "${FLIGHT_SIM_SCHEMA_DIR}/sim_time.proto")
+add_library(flight_clock_proto ${FLIGHT_CLOCK_SOURCES})
+target_include_directories(flight_clock_proto PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(flight_clock_proto PUBLIC protobuf::libprotobuf)
+add_library(flight_models_process src/process_config.cpp src/clock_admission.cpp src/runtime_transport.cpp)
+target_compile_features(flight_models_process PUBLIC cxx_std_17)
+target_compile_options(flight_models_process PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(flight_models_process PUBLIC include PRIVATE ${VALIJSON_INCLUDE_DIR})
+target_link_libraries(flight_models_process PUBLIC flight_models_runtime flight_clock_proto
+    Boost::system Threads::Threads PkgConfig::NATS)
+add_executable(flight-models-run src/runtime_main.cpp)
+target_compile_options(flight-models-run PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_link_libraries(flight-models-run PRIVATE flight_models_process)
+
 option(FLIGHT_MODELS_BUILD_BENCHMARK "Build the deterministic motion benchmark" OFF)
 if(FLIGHT_MODELS_BUILD_BENCHMARK)
   add_executable(motion-benchmark benchmarks/motion_benchmark.cpp)
@@ -61,6 +84,25 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(flight-clock-test tests/cpp/clock_admission_test.cpp)
+  target_compile_options(flight-clock-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(flight-clock-test PRIVATE flight_models_process)
+  add_test(NAME flight-clock-test COMMAND flight-clock-test)
+  add_executable(flight-process-config-test tests/cpp/process_config_test.cpp)
+  target_compile_options(flight-process-config-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(flight-process-config-test PRIVATE flight_models_process)
+  add_test(NAME flight-process-config-test COMMAND flight-process-config-test ${CMAKE_SOURCE_DIR})
+  set(FLIGHT_COMMS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../comms-models" CACHE PATH
+      "Communications repository for the test-only OWP observer")
+  set(FLIGHT_SENSOR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../sensor-models" CACHE PATH
+      "Sensor-models source for test-only DIS interoperability")
+  add_executable(flight-process-smoke tests/cpp/runtime_process_smoke.cpp
+      "${FLIGHT_SENSOR_SOURCE_DIR}/src/cpp/dis/entity_state_decoder.cpp"
+      "${FLIGHT_SENSOR_SOURCE_DIR}/src/cpp/dis/timestamp_alignment.cpp")
+  target_compile_options(flight-process-smoke PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_include_directories(flight-process-smoke PRIVATE "${FLIGHT_COMMS_SOURCE_DIR}/tests/cpp"
+      "${FLIGHT_SENSOR_SOURCE_DIR}/include")
+  target_link_libraries(flight-process-smoke PRIVATE flight_models_process)
   add_executable(flight-runtime-test tests/cpp/runtime_test.cpp)
   target_compile_options(flight-runtime-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries(flight-runtime-test PRIVATE flight_models_runtime)

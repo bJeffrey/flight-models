@@ -1,0 +1,390 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "capacity",
+    "profile_path",
+    "profile_schema_path",
+    "limits",
+    "scenario_epoch_unix_ns",
+    "scenario_epoch_utc",
+    "run_id",
+    "end_time_ns",
+    "transport",
+    "entities"
+  ],
+  "properties": {
+    "capacity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "Maximum configured entities; motion buffers are bounded separately."
+    },
+    "profile_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Flight-models motion profile; relative to generated config directory."
+    },
+    "profile_schema_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Motion profile JSON Schema; relative to generated config directory."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_commands",
+        "max_waypoints",
+        "max_samples",
+        "max_transitions",
+        "max_events"
+      ],
+      "properties": {
+        "max_commands": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "description": ""
+        },
+        "max_waypoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "description": ""
+        },
+        "max_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": ""
+        },
+        "max_transitions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": ""
+        },
+        "max_events": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": ""
+        }
+      }
+    },
+    "scenario_epoch_unix_ns": {
+      "type": "integer",
+      "minimum": -9223372036854775808,
+      "maximum": 9223372036854775807,
+      "description": "Unix ns corresponding to elapsed scenario zero."
+    },
+    "scenario_epoch_utc": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Same scenario origin as UTC Zulu date-time."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Expected authoritative clock run ID."
+    },
+    "end_time_ns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9223372036854775807,
+      "description": "Elapsed scenario end, ns; final tick may be clipped to this boundary."
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nats_url",
+        "clock_subject",
+        "dis_host",
+        "dis_port",
+        "owp_service_id",
+        "clock_poll_timeout_ms",
+        "operation_timeout_ms",
+        "pending_message_limit",
+        "pending_byte_limit",
+        "clock_replay_window"
+      ],
+      "properties": {
+        "nats_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Simulation NATS URL, separate from platform operational accounts."
+        },
+        "clock_subject": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "dis_host": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Direct DIS UDP destination; truth bypasses communications impairments."
+        },
+        "dis_port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": ""
+        },
+        "owp_service_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Explicit service ID authorized on each configured ASB."
+        },
+        "clock_poll_timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Process polling timeout, wall milliseconds; never simulation time."
+        },
+        "operation_timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Startup/drain and network-operation deadline, wall milliseconds."
+        },
+        "pending_message_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Clock subscription bound and global PRD publisher message bound across all ASBs."
+        },
+        "pending_byte_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Clock subscription bound, maximum incoming WebSocket frame size, and global pending PRD bytes across ASBs."
+        },
+        "clock_replay_window": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Bound retained accepted advancing clock fingerprints; older unknown replay fails clearly."
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "mode",
+          "latitude_rad",
+          "longitude_rad",
+          "altitude_hae_m",
+          "heading_rad",
+          "horizontal_speed_mps",
+          "dis",
+          "prd"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique scenario instance identity."
+          },
+          "mode": {
+            "enum": [
+              "fixed",
+              "moving"
+            ]
+          },
+          "latitude_rad": {
+            "type": "number",
+            "minimum": -1.5707963267948966,
+            "maximum": 1.5707963267948966
+          },
+          "longitude_rad": {
+            "type": "number",
+            "minimum": -3.141592653589793,
+            "maximum": 3.141592653589793
+          },
+          "altitude_hae_m": {
+            "type": "number"
+          },
+          "heading_rad": {
+            "type": "number"
+          },
+          "horizontal_speed_mps": {
+            "type": "number",
+            "minimum": 0
+          },
+          "dis": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "exercise_id",
+              "site_id",
+              "application_id",
+              "entity_id",
+              "force_id",
+              "type",
+              "marking"
+            ],
+            "properties": {
+              "exercise_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": ""
+              },
+              "site_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535,
+                "description": ""
+              },
+              "application_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535,
+                "description": ""
+              },
+              "entity_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535,
+                "description": ""
+              },
+              "force_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": ""
+              },
+              "type": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "domain",
+                  "country",
+                  "category",
+                  "subcategory",
+                  "specific",
+                  "extra"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "description": "DIS enumeration field"
+                  },
+                  "domain": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "description": "DIS enumeration field"
+                  },
+                  "country": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535,
+                    "description": "DIS enumeration field"
+                  },
+                  "category": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "description": "DIS enumeration field"
+                  },
+                  "subcategory": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "description": "DIS enumeration field"
+                  },
+                  "specific": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "description": "DIS enumeration field"
+                  },
+                  "extra": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255,
+                    "description": "DIS enumeration field"
+                  }
+                }
+              },
+              "marking": {
+                "type": "string",
+                "maxLength": 11,
+                "pattern": "^[ -~]*$",
+                "description": "Printable ASCII display marking; not entity identity."
+              }
+            }
+          },
+          "prd": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "platform_system_id",
+                  "navigation_subsystem_id",
+                  "classification",
+                  "owner_government",
+                  "navigation_solution_state",
+                  "asb_url",
+                  "topic"
+                ],
+                "properties": {
+                  "platform_system_id": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  },
+                  "navigation_subsystem_id": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                  },
+                  "classification": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "UCI classification enum supplied by integration."
+                  },
+                  "owner_government": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "UCI GovernmentIdentifier supplied by integration."
+                  },
+                  "navigation_solution_state": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "UCI navigation solution-state enum; ideal profile does not imply equipment realism."
+                  },
+                  "asb_url": {
+                    "type": "string",
+                    "pattern": "^ws://[A-Za-z0-9_.-]+:[0-9]+/[^\\s]*$",
+                    "description": "Explicit local ASB endpoint; initial transport supports plain WebSocket DNS/IPv4 URLs."
+                  },
+                  "topic": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+$",
+                    "description": "Local platform ASB publication topic."
+                  }
+                }
+              }
+            ],
+            "description": "Null omits operational reporting; physical DIS remains enabled."
+          }
+        }
+      }
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Fresh-run runtime deployment contract. No restore, live route admission or implicit endpoints. Physical state is ECEF internally; input geodetic angles are radians and altitude is WGS-84 HAE."
+}

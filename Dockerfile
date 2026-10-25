@@ -1,8 +1,8 @@
-# Development toolchain; runtime transport wiring remains a separate slice.
+# Maintained development/runtime toolchain; normal tests use cached dependencies.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build nlohmann-json3-dev libvalijson-dev libboost-system-dev \
-    ca-certificates curl \
+    ca-certificates curl libnats-dev libprotobuf-dev protobuf-compiler pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Pin and verify the source archive. Bootstrap needs network access; ordinary

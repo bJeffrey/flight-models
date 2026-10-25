@@ -301,6 +301,9 @@ explicit regression harness.
   Distinguish physical DIS state from modeled navigation PRD. Validate missing,
   stale, duplicate, reordered and unauthorized inputs with focused mocked ports.
   Stop before live ecosystem acceptance.
+  The fresh-run clock/output process below now passes isolated NATS/two-ASB/UDP
+  acceptance. Normal startup, operational controls, emitter carriers and full
+  sensor/comms/scenario integration still keep this checkbox open.
 - [ ] **FM-PERF-1 — flight-models:** provide a bounded benchmark wrapper for
   configurable workloads: 1/4/16/64-platform smoke cases followed by declared
   representative large-scenario counts, with emitter counts/event rates,
@@ -1042,3 +1045,87 @@ not silently substitute that topology for the accepted platform-local target.
 Then add opt-in scenario startup and isolated transport acceptance before the
 full emitter/control/sensor/communications/performance retirement gates.
 SuperCell remains current/reference; new epoch/restore work remains deferred.
+
+### Fresh-run clock and output process (2026-10-24)
+
+The next FM-RUNTIME-1 slice is locally accepted. `flight-models-run` wraps the
+existing domain runtime with the authoritative `sim.time.tick` protobuf input,
+direct DIS UDP output and explicitly configured platform-local OWP publishers.
+OpenDIS still owns serialization. No domain library acquires a transport or
+wall-clock dependency, and no additional per-tick ACK protocol is introduced.
+Normal ecosystem startup and SuperCell retirement remain pending.
+
+Changed paths: process config/clock/transport public headers and sources,
+`runtime_main.cpp`, deployment schema/policy, owning runtime Compose/run wrapper,
+process unit tests and isolated smoke workflow; Docker/CMake/README/index.
+The ai-bm-sim generator and its tests now retain required clock replay and pending
+message/byte bounds. The existing core gained an explicit creation-time overload
+for final-interval clipping. A live-test regression also corrected initial motion
+admission: fixed ground rows bypass moving-flight minimum speed/HAE controls;
+finite state validation and their prohibition on route/command programs remain.
+
+Deployment uses `config/runtime.schema.json`, explicit identity/reporting/ASB
+bindings, and versioned resource/time policies. Origins must agree as UTC text
+and signed Unix ns, with exact integer checks and unique entity/DIS/reporting
+identities. Relative profile paths resolve at the generated configuration file;
+the container example uses `/src/config/...` paths. `config/runtime_policy.json`
+is a synthetic three-platform example, not qualified deployment sizing. Input
+location remains geodetic radians/HAE; the core converts it once to canonical
+ECEF. Standalone wrapper launch requires an explicitly selected existing
+simulation Docker network; it does not create platform ASBs implicitly.
+
+Clock admission starts at nonadvancing time/tick zero. Paused/resume heartbeats
+advance no domain work; advancing messages require contiguous IDs/times and a
+matching run/origin/frozen initial timeline epoch. Accepted advancing replays are
+idempotent within a configured finite history. Gaps, conflicts, expired replays,
+changed epochs and late joins fail clearly rather than guessing missing motion.
+Absolute creation-time representability is checked before processing state can
+change. Rate/mode never enter domain advancement. A final overshooting interval
+stops physical work at scenario end while retaining announced PRD creation time.
+New epoch/restore handling remains deferred until after SuperCell deprecation.
+
+Transport uses bounded NATS ingress and global pending PRD message/byte counts
+across ASBs, reserved before asynchronous queue posting. Outbound WebSocket
+writes are pipelined with ordered ACK retirement and configured oldest-ACK/write
+deadlines. Incoming frame sizes are bounded by the byte policy. Subscription
+registration is flushed before readiness. Connection loss, dropped clock input,
+queue overflow and ASB rejection are fatal and visible during idle clock polling;
+there is no implicit reconnect/redelivery. Stop requests finish active domain
+work and drain admitted publications within the operation deadline. DIS goes
+straight to its UDP destination; interplatform impairment remains comms-models'
+responsibility. Publisher ACKs establish local ASB admission, not receiver work
+completion. Initial plain-WebSocket DNS/IPv4 endpoints are supported; TLS/IPv6,
+new recovery behavior and throughput qualification are not claimed.
+
+Validation: `./test_process.sh logs/20261024/process-accepted` builds/tests in the
+maintained offline Release image, then runs a unique isolated Compose project
+with real NATS, two Sleet ASBs, the actual process and a finite observer. All
+**12 CTest executables pass**. The process emits **15 independently decoded DIS
+PDUs and six exact PRDs** for two reporting moving entities plus one fixed
+nonreporting entity. The test checks five physical sample times per entity,
+identity/force/static DR, platform-local report contents, accepted duplicate and
+pause behavior, and 400 ms validity versus 450 ms final creation time. A separate
+publication-rejection case exits with an error while no further clock arrives.
+The child must exit normally at scenario end. Test cleanup removes only its
+PID-scoped project. Functional acceptance is not a throughput/FTRT measurement.
+
+Evidence: [12 tests](../logs/20261024/process-accepted/build-test.log),
+[transport observer](../logs/20261024/process-accepted/compose.log),
+[process counts](../logs/20261024/process-accepted/flight-process.log),
+[rejection propagation](../logs/20261024/process-accepted/flight-process-forbidden-topic.log),
+[cleanup](../logs/20261024/process-accepted/cleanup.log).
+From ai-bm-sim, `PYTHONPATH=. pytest -q tests/test_generate_flight_models_runtime_inputs.py`
+also passes all three generator tests. Independent review's UTC-creation bound
+finding is resolved with an admission check/regression; its fixed-ground-row
+review found the envelope correction appropriately scoped. No material review
+issues remain.
+
+Exact next slice: wire the owning runtime service and generated configuration
+into **ai-bm-sim's opt-in normal scenario startup**, with explicit per-platform
+ASB composition and authoritative clock startup ordering. Reconcile the legacy
+SuperCell dynamics-stage bridge without adding an ordinary flight tick-ACK
+barrier or running two truth producers for one identity. Then exercise actual
+sensor-models DIS/PRD consumption and comms-models interplatform delivery in a
+bounded system scenario. Operational control/route admission, emitter-source
+ownership/carriers, nonideal navigation and performance/retirement gates remain
+open. SuperCell stays current/reference until that acceptance is complete.

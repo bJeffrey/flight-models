@@ -49,6 +49,13 @@ class Runtime {
    * @throws std::length_error when configured event/output bounds are exceeded.
    */
   std::vector<RuntimeOutput> advance_to(std::int64_t time_ns);
+  /** Advance to a bounded scenario endpoint while retaining announced creation time.
+   * @param time_ns Physical processing boundary, e.g. configured scenario end.
+   * @param creation_time_ns Announced simulation time, at or after time_ns.
+   * @return Same scheduled samples as advance_to(time_ns), with PRD creation
+   *         stamped at creation_time_ns. Validity timestamps remain unchanged.
+   */
+  std::vector<RuntimeOutput> advance_to(std::int64_t time_ns, std::int64_t creation_time_ns);
 
  private:
   struct Impl;
