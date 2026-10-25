@@ -26,8 +26,58 @@
       "description": "Synthetic point kinematics, independent horizontal speed and vertical-rate limits; no aerodynamic envelope claim."
     },
     "navigation": {
-      "const": "ideal_test",
-      "description": "Explicit test-only exact navigation with zero covariance; realism is not established."
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "position_bias_ecef_m",
+        "velocity_bias_ecef_mps",
+        "position_sigma_m",
+        "velocity_sigma_mps",
+        "seed"
+      ],
+      "properties": {
+        "model": {
+          "enum": [
+            "ideal_test",
+            "bias_gaussian"
+          ],
+          "description": "ideal_test requires zero error settings; bias_gaussian permits fixed biases and random errors, including the all-zero exact-copy case."
+        },
+        "position_bias_ecef_m": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Fixed [X,Y,Z] ECEF position bias in metres; an all-zero vector bypasses addition."
+        },
+        "velocity_bias_ecef_mps": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Fixed [X,Y,Z] ECEF velocity bias in metres/second; an all-zero vector bypasses addition."
+        },
+        "position_sigma_m": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Isotropic position standard deviation in metres per ECEF axis; zero bypasses position RNG and sampling."
+        },
+        "velocity_sigma_mps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Isotropic velocity standard deviation in metres/second per ECEF axis; zero bypasses velocity RNG and sampling."
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Exact JSON integer in [0, UINT64_MAX]; sign and range are checked by the typed loader because the schema validator uses signed 64-bit comparisons."
+        }
+      },
+      "description": "ECEF fixed biases and independent per-axis Gaussian standard deviations; covariance excludes fixed bias."
     },
     "flight_envelope": {
       "type": "object",

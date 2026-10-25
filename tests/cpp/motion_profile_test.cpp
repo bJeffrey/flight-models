@@ -51,7 +51,8 @@ void rejects(Function&& function, const std::string& context) {
 void check(const std::string& profile_path, const std::string& schema_path) {
   const auto profile = flight_models::load_motion_profile(profile_path, schema_path);
   require(profile.profile_id == "synthetic-fixed-wing", "profile id was not loaded");
-  require(profile.model == "bounded_kinematic_no_wind" && profile.navigation == "ideal_test",
+  require(profile.model == "bounded_kinematic_no_wind" && profile.navigation.model == "ideal_test" &&
+              profile.navigation.position_sigma_m == 0 && profile.navigation.seed == 0,
           "explicit model/navigation metadata was not retained");
   require(profile.flight_envelope.min_speed_mps == 92.6 &&
               profile.flight_envelope.max_altitude_hae_m == 15000.0,
@@ -75,6 +76,11 @@ int main(int argc, char** argv) {
     const auto profile_path = (root / "config/profiles/synthetic_fixed_wing.json").string();
     const auto schema_path = (root / "config/motion_profile.schema.json").string();
     check(profile_path, schema_path);
+    const auto error_profile = flight_models::load_motion_profile(
+        (root / "config/profiles/synthetic_navigation_error.json").string(), schema_path);
+    require(error_profile.navigation.model == "bias_gaussian" &&
+                error_profile.navigation.position_sigma_m > 0,
+            "nonzero navigation error profile was not loaded");
 
     TemporaryDirectory temporary;
     std::ifstream input(profile_path);
@@ -90,8 +96,23 @@ int main(int argc, char** argv) {
     changed["model"] = "unsupported_model";
     rejects_profile(changed);
     changed = base;
-    changed["navigation"] = "nonideal_unimplemented";
+    changed["navigation"]["model"] = "nonideal_unimplemented";
     rejects_profile(changed);
+    changed = base;
+    changed["navigation"].erase("seed");
+    rejects_profile(changed);
+    changed = base;
+    changed["navigation"]["seed"] = -1;
+    rejects_profile(changed);
+    changed = base;
+    changed["navigation"]["seed"] = 1.0;
+    rejects_profile(changed);
+    changed = base;
+    changed["navigation"]["seed"] = std::numeric_limits<std::uint64_t>::max();
+    accepts(changed);
+    changed = base;
+    changed["navigation"]["position_bias_ecef_m"][0] = 1.0;
+    rejects_profile(changed);  // ideal_test requires zero bias and sigma.
     changed = base;
     changed.erase("description");
     rejects_profile(changed);

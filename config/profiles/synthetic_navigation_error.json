@@ -1,0 +1,44 @@
+{
+  "profile_id": "synthetic-fixed-wing-navigation-error",
+  "description": "Synthetic navigation-error example, not an equipment accuracy specification. Same bounded no-wind kinematics as synthetic_fixed_wing; configurable fixed ECEF bias plus independent isotropic Gaussian position/velocity error at PRD validity times. Covariance describes only the random component. No correction or DIS truth changes.",
+  "model": "bounded_kinematic_no_wind",
+  "navigation": {
+    "model": "bias_gaussian",
+    "position_bias_ecef_m": [
+      1.0,
+      -2.0,
+      0.5
+    ],
+    "velocity_bias_ecef_mps": [
+      0.01,
+      -0.02,
+      0.005
+    ],
+    "position_sigma_m": 1.0,
+    "velocity_sigma_mps": 0.05,
+    "seed": 20261025
+  },
+  "flight_envelope": {
+    "min_speed_mps": 92.6,
+    "max_speed_mps": 205.8,
+    "max_acceleration_mps2": 4.0,
+    "max_deceleration_mps2": 4.0,
+    "max_turn_rate_radps": 0.05235987755982989,
+    "max_climb_rate_mps": 30.0,
+    "max_descent_rate_mps": 30.0,
+    "min_altitude_hae_m": 300.0,
+    "max_altitude_hae_m": 15000.0
+  },
+  "guidance": {
+    "waypoint_capture_radius_m": 150.0
+  },
+  "integration": {
+    "max_substep_ns": 10000000,
+    "max_interval_ns": 2000000000,
+    "max_substeps_per_interval": 4096
+  },
+  "publication": {
+    "dis_period_ns": 100000000,
+    "prd_period_ns": 200000000
+  }
+}

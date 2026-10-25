@@ -1,9 +1,10 @@
 /** @file
- * Ideal test navigation state copied from committed physical snapshots.
+ * Reported navigation in ECEF, with optional synthetic bias and Gaussian errors.
  */
 #pragma once
 
 #include "flight_models/state_store.h"
+#include "flight_models/motion_profile.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,10 +15,8 @@ namespace flight_models {
 
 /**
  * Reported ECEF state and covariance for one navigation sample.
- * The initial IdealNavigationBatch producer requires explicit ideal_test
- * selection and returns zero covariance for its exact-copy assumption. The PRD
- * boundary accepts this record independently of truth; nonzero covariance may
- * be used in adapter fixtures but does not establish a nonideal error model.
+ * Covariance is ECEF [position, velocity], row-major; the configured model
+ * reports independent per-axis uncertainty and excludes fixed bias.
  */
 struct NavigationSolution {
   math::Vector3 position_ecef_m{}; /**< ECEF position, metres. */
@@ -40,57 +39,79 @@ struct NavigationSolution {
 [[nodiscard]] NavigationSolution ideal_navigation_solution(
     const PhysicalState& state, const std::string& selected_model);
 
-/**
- * Bounded reusable batch of ideal navigation samples from owning snapshots.
- * Numeric state is copied into separate reusable columns; later physical-state
- * changes cannot alter published solutions. Calls are single-owner and must
- * be serialized. Entity ID references expire on the next successful generate()
- * or destruction; returned solution values remain independent owning copies.
- */
-class IdealNavigationBatch {
+/** Reusable validated navigation model with identity/time-keyed sampling. */
+class NavigationModel {
  public:
   /**
-   * Allocate a fixed row capacity and require explicit model selection.
-   * @param capacity Maximum number of enabled snapshot rows.
-   * @param selected_model Must be exactly "ideal_test".
-   * @throws std::invalid_argument for zero capacity or any other model.
-   * @throws std::length_error if numeric storage size is not representable.
+   * Validate configuration and cache enabled terms/covariance once.
+   * @param config Explicit model, ECEF bias vectors, sigmas and seed; copied.
+   * @throws std::invalid_argument For an unsupported model, invalid numerical
+   *         settings, nonzero ideal_test errors, or unrepresentable variance.
    */
-  IdealNavigationBatch(std::size_t capacity, const std::string& selected_model);
-
+  explicit NavigationModel(const NavigationConfig& config);
   /**
-   * Copy enabled fixed and moving rows in canonical snapshot order.
-   * Disabled rows are omitted. The previous batch remains published if input
-   * validation, allocation, or capacity checking fails.
-   * @param snapshot Owning physical-state snapshot; no live-store fallback occurs.
-   * @throws std::invalid_argument for invalid identity, negative time, nonfinite
-   *         state, or a matrix that is not a proper orthonormal DCM.
-   * @throws std::length_error if enabled rows exceed fixed capacity.
+   * Produce reported ECEF state without modifying the physical input.
+   * @param state Physical ECEF position/velocity, attitude and validity time.
+   * @param entity_id Nonempty stable identity used with seed/time for sampling.
+   * @return Owning reported state and covariance; attitude/time are unchanged.
+   *         Repeated keys reproduce samples within the same toolchain/build.
+   * @throws std::invalid_argument For invalid physical state or empty identity.
+   * @throws std::overflow_error If perturbation produces nonfinite output.
+   */
+  [[nodiscard]] NavigationSolution solution(const PhysicalState& state, const std::string& entity_id) const;
+  /** Return the fixed covariance shared by every solution from this model. */
+  const math::Covariance6& covariance() const noexcept { return covariance_; }
+  /** True when all bias and noise terms are zero. */
+  bool is_zero_error() const noexcept { return zero_error_; }
+ private:
+  NavigationConfig config_;
+  double position_variance_{};
+  double velocity_variance_{};
+  bool position_bias_enabled_{};
+  bool velocity_bias_enabled_{};
+  bool position_noise_enabled_{};
+  bool velocity_noise_enabled_{};
+  bool zero_error_{};
+  math::Covariance6 covariance_{};
+};
+
+/**
+ * Fixed-capacity transactional batch over owning snapshots.
+ * Numeric values use reusable structure-of-arrays columns. Calls must be
+ * serialized; IDs remain valid until the next successful generate().
+ */
+class NavigationBatch {
+ public:
+  /**
+   * Allocate reusable SoA buffers and validate configuration once.
+   * @param capacity Maximum enabled rows, positive and fixed for this batch.
+   * @param config Navigation error settings, copied into the batch model.
+   * @throws std::invalid_argument For zero capacity or invalid configuration.
+   * @throws std::length_error If the numeric storage size is not representable.
+   */
+  NavigationBatch(std::size_t capacity, const NavigationConfig& config);
+  /**
+   * Stage enabled rows in snapshot order and publish after every row succeeds.
+   * @param snapshot Owning physical rows; disabled entities are omitted.
+   * @throws std::length_error If enabled rows exceed the fixed capacity.
+   * @throws std::invalid_argument For an invalid input state/identity.
+   * @throws std::overflow_error If perturbation produces nonfinite output.
+   * All failures leave the previous published batch intact.
    */
   void generate(const Snapshot& snapshot);
-
-  /** Number of samples in the last successful generation. */
+  /** Number of rows in the last successful generation. */
   std::size_t size() const noexcept { return count_; }
-  /**
-   * Return the copied entity identifier.
-   * @throws std::out_of_range when row is outside [0, size()).
-   */
+  /** Return the copied ID; throws out_of_range for an invalid row. */
   const std::string& entity_id(std::size_t row) const;
-  /**
-   * Return an owning copy of one solution, including its zero covariance.
-   * @throws std::out_of_range when row is outside [0, size()).
-   */
+  /** Return an owning solution copy; throws out_of_range for an invalid row. */
   NavigationSolution solution(std::size_t row) const;
-
  private:
   std::size_t capacity_;
+  NavigationModel model_;
   std::size_t count_{};
-  std::vector<double> numbers_;
-  std::vector<double> staged_numbers_;
-  std::vector<std::int64_t> times_;
-  std::vector<std::int64_t> staged_times_;
-  std::vector<std::string> ids_;
-  std::vector<std::string> staged_ids_;
+  std::vector<double> numbers_, staged_numbers_;
+  std::vector<std::int64_t> times_, staged_times_;
+  std::vector<std::string> ids_, staged_ids_;
 };
 
 }  // namespace flight_models

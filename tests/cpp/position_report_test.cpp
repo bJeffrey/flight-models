@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
   const auto handle = store.spawn("ownship", 0, flight_models::EntityMode::moving, physical, {});
   flight_models::Snapshot snapshot(1);
   store.snapshot(snapshot);
-  flight_models::IdealNavigationBatch batch(1, "ideal_test");
+  flight_models::NavigationBatch batch(1, {"ideal_test", {}, {}, 0.0, 0.0, 0});
   batch.generate(snapshot);
   store.erase(handle);
   const auto generated = flight_models::encode_position_report_detailed(

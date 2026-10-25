@@ -41,7 +41,7 @@ add_library(flight_models_navigation src/navigation.cpp src/position_report.cpp)
 target_compile_features(flight_models_navigation PUBLIC cxx_std_17)
 target_compile_options(flight_models_navigation PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(flight_models_navigation PUBLIC include)
-target_link_libraries(flight_models_navigation PUBLIC flight_models_state nlohmann_json::nlohmann_json)
+target_link_libraries(flight_models_navigation PUBLIC flight_models_state flight_models_config nlohmann_json::nlohmann_json)
 
 # Runtime orchestration composes domain libraries without adding transports to them.
 add_library(flight_models_runtime src/runtime.cpp)

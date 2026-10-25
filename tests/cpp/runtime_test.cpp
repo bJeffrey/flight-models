@@ -73,6 +73,38 @@ int main(int argc, char** argv) {
       }
     }
     require(saw_red_physical && !saw_red_report && saw_prd, "PRD membership and physical DIS output must be independent");
+    auto error_settings = settings;
+    error_settings["profile_path"] = (root / "config/profiles/synthetic_navigation_error.json").string();
+    flight_models::Runtime noisy(error_settings);
+    const auto noisy_initial = noisy.advance_to(0);
+    require(noisy_initial.size() == initial.size(), "navigation error changed initial event membership");
+    bool saw_unchanged_dis = false;
+    bool saw_changed_prd = false;
+    for (std::size_t i = 0; i < initial.size(); ++i) {
+      require(noisy_initial[i].entity_id == initial[i].entity_id && noisy_initial[i].kind == initial[i].kind,
+              "navigation error changed initial event ordering");
+      if (initial[i].kind == flight_models::SampleKind::physical) {
+        require(noisy_initial[i].dis == initial[i].dis, "navigation error changed physical DIS bytes");
+        if (initial[i].entity_id == "reported") saw_unchanged_dis = true;
+      } else if (initial[i].entity_id == "reported") {
+        saw_changed_prd = noisy_initial[i].prd != initial[i].prd;
+      }
+    }
+    require(saw_unchanged_dis && saw_changed_prd, "noise must affect PRD while leaving DIS unchanged");
+    const auto noisy_split_a = noisy.advance_to(100000000);
+    const auto noisy_split_b = noisy.advance_to(200000000);
+    flight_models::Runtime noisy_direct(error_settings);
+    noisy_direct.advance_to(0);
+    const auto noisy_direct_200 = noisy_direct.advance_to(200000000);
+    require(noisy_direct_200.size() == noisy_split_a.size() + noisy_split_b.size(),
+            "noise changed navigation event partitioning");
+    for (std::size_t i = 0; i < noisy_split_b.size(); ++i) {
+      const auto& split = noisy_split_b[i];
+      const auto& direct_output = noisy_direct_200[i + noisy_split_a.size()];
+      require(direct_output.entity_id == split.entity_id && direct_output.kind == split.kind &&
+              direct_output.dis == split.dis && direct_output.prd == split.prd,
+              "navigation samples changed when runtime boundaries were partitioned");
+    }
     const auto& report = at200.back().prd;
     require(!report.is_null(), "reported entity must emit its scheduled report");
     flight_models::Runtime delayed(settings);

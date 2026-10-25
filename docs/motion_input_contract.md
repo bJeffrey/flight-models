@@ -33,12 +33,13 @@ This checkpoint does not migrate that cross-repository configuration binding.
 | Maximum admitted clock interval | 2 s scenario time |
 | Maximum substeps per interval | 4096, including extra event splits |
 | DIS / PRD sampling periods | 100 ms / 200 ms scenario time |
-| Navigation | Explicit `ideal_test`: exact reported state, zero covariance |
+| Navigation | Explicit `ideal_test` or synthetic ECEF `bias_gaussian`; bias vectors, position/velocity sigmas and seed are required |
 
 Capture, integration, work-budget and publication values are synthetic test
 settings. They are not inferred sensor specifications or performance claims.
-Ideal navigation is a bounded initial test profile; nonideal error modeling
-remains FM-NAV-PRD-1 before realistic navigation acceptance.
+Navigation uses a separate reported-state model. The ideal and Gaussian error
+profiles are synthetic; equipment-specific accuracy qualification remains open.
+The navigation model adds no coordinate conversions and does not alter DIS truth.
 
 ## Core inputs and guidance
 

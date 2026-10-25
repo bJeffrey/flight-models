@@ -8,6 +8,7 @@
 #include <valijson/validation_results.hpp>
 
 #include <cmath>
+#include <array>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -56,6 +57,26 @@ std::int64_t positive_int64(const Json& object, const char* key) {
 
 }  // namespace
 
+void validate_navigation_config(const NavigationConfig& navigation) {
+  if (navigation.model != "ideal_test" && navigation.model != "bias_gaussian")
+    throw std::invalid_argument("unsupported navigation model");
+  for (double value : navigation.position_bias_ecef_m)
+    if (!std::isfinite(value)) throw std::invalid_argument("nonfinite position bias");
+  for (double value : navigation.velocity_bias_ecef_mps)
+    if (!std::isfinite(value)) throw std::invalid_argument("nonfinite velocity bias");
+  if (!std::isfinite(navigation.position_sigma_m) || !std::isfinite(navigation.velocity_sigma_mps) ||
+      navigation.position_sigma_m < 0 || navigation.velocity_sigma_mps < 0)
+    throw std::invalid_argument("navigation sigmas must be finite and nonnegative");
+  if (!std::isfinite(navigation.position_sigma_m * navigation.position_sigma_m) ||
+      !std::isfinite(navigation.velocity_sigma_mps * navigation.velocity_sigma_mps))
+    throw std::invalid_argument("navigation variance overflow");
+  const std::array<double, 3> zero{};
+  if (navigation.model == "ideal_test" &&
+      (navigation.position_sigma_m != 0 || navigation.velocity_sigma_mps != 0 ||
+       navigation.position_bias_ecef_m != zero || navigation.velocity_bias_ecef_mps != zero))
+    throw std::invalid_argument("ideal_test navigation requires zero bias and sigma");
+}
+
 MotionProfile load_motion_profile(const std::string& path, const std::string& schema_path) {
   // Parse both inputs before schema validation so file and JSON failures retain their source context.
   const Json document = read_json(path, false);
@@ -88,6 +109,23 @@ MotionProfile load_motion_profile(const std::string& path, const std::string& sc
   const auto& envelope = document.at("flight_envelope");
   const auto& integration = document.at("integration");
   const auto& publication = document.at("publication");
+  const auto& navigation_json = document.at("navigation");
+  NavigationConfig navigation{
+      navigation_json.at("model").get<std::string>(),
+      navigation_json.at("position_bias_ecef_m").get<std::array<double, 3>>(),
+      navigation_json.at("velocity_bias_ecef_mps").get<std::array<double, 3>>(),
+      finite_number(navigation_json, "position_sigma_m"),
+      finite_number(navigation_json, "velocity_sigma_mps"),
+      [&navigation_json]() {
+        const auto& seed = navigation_json.at("seed");
+        if (seed.is_number_unsigned()) return seed.get<std::uint64_t>();
+        if (seed.is_number_integer()) {
+          const auto signed_seed = seed.get<std::int64_t>();
+          if (signed_seed >= 0) return static_cast<std::uint64_t>(signed_seed);
+        }
+        throw std::invalid_argument("navigation seed must be a nonnegative exact integer");
+      }()};
+  validate_navigation_config(navigation);
   // Keep numerical groups inspectable before constructing the complete profile.
   const FlightEnvelope limits{
       finite_number(envelope, "min_speed_mps"), finite_number(envelope, "max_speed_mps"),
@@ -103,7 +141,7 @@ MotionProfile load_motion_profile(const std::string& path, const std::string& sc
   MotionProfile result{
       document.at("profile_id").get<std::string>(),
       document.at("model").get<std::string>(),
-      document.at("navigation").get<std::string>(), limits,
+      navigation, limits,
       finite_number(document.at("guidance"), "waypoint_capture_radius_m"),
       integration_policy, publication_policy};
 

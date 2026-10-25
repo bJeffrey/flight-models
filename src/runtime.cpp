@@ -135,6 +135,7 @@ struct Runtime::Impl {
   std::size_t capacity;
   std::int64_t epoch_unix_ns;
   MotionProfile profile;
+  NavigationModel navigation;
   StateStore store;
   std::unique_ptr<MotionDriver> driver;
   std::unordered_map<std::size_t, Entity> entities;
@@ -146,6 +147,7 @@ struct Runtime::Impl {
         epoch_unix_ns(integer_ns(config.at("scenario_epoch_unix_ns"), "scenario_epoch_unix_ns")),
         profile(load_motion_profile(config.at("profile_path").get<std::string>(),
                                     config.at("profile_schema_path").get<std::string>())),
+        navigation(profile.navigation),
         store(capacity, 1) {
     if (config.at("entities").size() > capacity) throw std::length_error("entity count exceeds capacity");
     for (const auto& entity_json : config.at("entities")) {
@@ -217,8 +219,8 @@ std::vector<RuntimeOutput> Runtime::advance_to(std::int64_t time_ns, std::int64_
       if (sample.kind == SampleKind::physical) {
         output.dis = encode_entity_state(entity.dis, sample.state, entity.mode, epoch_hour);
       } else if (entity.reports) {
-        const auto navigation = ideal_navigation_solution(sample.state, impl_->profile.navigation);
-        output.prd = encode_position_report_detailed(entity.prd, navigation, impl_->epoch_unix_ns, creation_time_ns);
+        const auto solution = impl_->navigation.solution(sample.state, entity.id);
+        output.prd = encode_position_report_detailed(entity.prd, solution, impl_->epoch_unix_ns, creation_time_ns);
       }
       result.push_back(std::move(output));
     }

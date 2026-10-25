@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <string>
 
 namespace flight_models {
@@ -34,11 +35,29 @@ struct PublicationPolicy {
   std::int64_t prd_period_ns; /**< PRD report cadence, simulation ns. */
 };
 
+/** ECEF navigation error configuration; sigmas are one-axis standard deviations. */
+struct NavigationConfig {
+  std::string model; /**< ideal_test or bias_gaussian. */
+  std::array<double, 3> position_bias_ecef_m{}; /**< Fixed ECEF position bias, m. */
+  std::array<double, 3> velocity_bias_ecef_mps{}; /**< Fixed ECEF velocity bias, m/s. */
+  double position_sigma_m{}; /**< Independent per-axis Gaussian sigma, m. */
+  double velocity_sigma_mps{}; /**< Independent per-axis Gaussian sigma, m/s. */
+  std::uint64_t seed{}; /**< Stable sampling seed. */
+};
+
+/**
+ * Validate model, finite biases/sigmas, ideal_test constraints and variance range.
+ * @param config Caller-supplied settings; validation does not modify them.
+ * @throws std::invalid_argument If the selected model/settings are unsupported,
+ *         a sigma is negative, a value is nonfinite, or variance overflows.
+ */
+void validate_navigation_config(const NavigationConfig& config);
+
 /** Parsed, schema-checked motion profile; treat its fields as immutable after load. */
 struct MotionProfile {
   std::string profile_id;            /**< Stable profile identifier. */
   std::string model;                 /**< Schema-constrained model identifier. */
-  std::string navigation;            /**< Schema-constrained navigation identifier. */
+  NavigationConfig navigation;       /**< Configured ECEF navigation error model. */
   FlightEnvelope flight_envelope;    /**< Configured motion limits. */
   double waypoint_capture_radius_m;  /**< 3D capture radius in ECEF metres. */
   IntegrationPolicy integration;    /**< Configured numerical work bounds. */

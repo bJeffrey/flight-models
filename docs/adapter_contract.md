@@ -100,19 +100,29 @@ the producing System and the other the producing Subsystem.
 
 ## Implemented reported-navigation adapter (2026-10-23)
 
-`IdealNavigationBatch` requires explicit `ideal_test` selection and copies enabled
-physical snapshot rows into separately owned/staged SoA columns. It emits exact
-reported ECEF position/velocity/attitude and zero covariance, retaining each
-sample's elapsed source time. Disabled entities are omitted. Capacity and input
-failures leave the prior published batch intact. No nonideal model is selected,
-and the older fixture's nonzero covariance does not define equipment accuracy.
+`NavigationBatch` copies enabled physical snapshot rows into separately staged
+SoA columns and uses `NavigationModel` to populate reported ECEF state.
+`ideal_test` requires zero errors. `bias_gaussian` adds configured fixed ECEF
+position/velocity bias and independent zero-mean isotropic Gaussian errors at
+validity times. Covariance is diagonal in ECEF [position, velocity] ordering,
+with the respective sigma squared on each axis; cross-covariance is zero and
+fixed biases are excluded. No physical truth, attitude or source time is changed.
+Disabled entities are omitted. Capacity and input failures preserve the prior
+published batch. The model adds no coordinate conversions; the existing report
+boundary below remains the only navigation conversion point.
 
-`encode_position_report_detailed` takes `NavigationSolution` and explicit metadata,
-without a physical-state or store argument. Header SystemID identifies the
-platform; PositionSource SubsystemID identifies the producing EGI. Integration
-supplies security and navigation-solution-state values. Reporting membership is
-a caller/runtime responsibility; generating local navigation does not authorize
-publishing every platform's PRD. SimulationTargetNumber is omitted.
+Zero bias vectors bypass their additions, zero sigmas independently bypass random
+sampling, and all-zero errors use the exact-copy path. Configuration and derived
+flags/variances are admitted once per model. Samples are keyed by seed, entity ID,
+validity time and separate position/velocity streams, with no shared RNG state;
+reproducibility is within the recorded toolchain/build. This is an explicit
+synthetic model, not a navigation equipment accuracy qualification.
+
+[The nonzero profile](../config/profiles/synthetic_navigation_error.json) is a
+synthetic demonstration. The default profile retains zero errors. Runtime
+bindings supply security and navigation-solution-state values and explicitly
+select reporting platforms/local ASBs; navigation generation does not authorize
+publication of every platform. SimulationTargetNumber remains omitted.
 
 The report boundary converts reported ECEF position once to WGS-84 geodetic HAE,
 derives its local NED rotation, rotates reported velocity and the full ECEF

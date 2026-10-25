@@ -273,15 +273,17 @@ explicit regression harness.
   and worker counts, plus enable/disable/reset and buffer limits. Compare with
   retained source-model fixtures; do not duplicate sensor-models propagation or
   receiver processing. Stop before cross-service emission acceptance.
-- [ ] **FM-NAV-PRD-1 — flight-models:** after FM-CONTRACT-1 and FM-SOA-1, implement
+- [x] **FM-NAV-PRD-1 — flight-models:** after FM-CONTRACT-1 and FM-SOA-1, implement
   batched navigation/error state and the PRD encoder. Validate configured error
   statistics/covariance consistency, reproducible entity-keyed noise, source-time
   and platform/EGI identity mapping, reporting membership and strict UCI schema
   conformance. Validate ideal and nonideal profiles separately. Stop before live
   CAL/recipient-routing acceptance; runtime wiring remains FM-RUNTIME-1.
-  The ideal-only SoA/PRD boundary now passes local model and generated-output
-  schema checks below. Nonideal parameters/statistics and entity-keyed noise
-  remain open; the retained covariance fixture is not an accuracy specification.
+  The ideal and configured synthetic ECEF bias/Gaussian models now pass local
+  statistics, deterministic sampling, batch, runtime and live UCI admission
+  checks; see the 2026-10-25 error-model checkpoint below. Equipment-specific
+  accuracy qualification remains open; synthetic settings and the retained
+  covariance fixture are not an equipment accuracy specification.
 - [x] **FM-DIS-1 — flight-models:** pin an OpenDIS revision/license record and
   build it in the maintained container environment, with the selected DIS version
   and examples disabled. Implement the adapter after FM-CONTRACT-1. Validate
@@ -1129,3 +1131,83 @@ sensor-models DIS/PRD consumption and comms-models interplatform delivery in a
 bounded system scenario. Operational control/route admission, emitter-source
 ownership/carriers, nonideal navigation and performance/retirement gates remain
 open. SuperCell stays current/reference until that acceptance is complete.
+
+### Opt-in startup orchestration handoff (2026-10-25)
+
+ai-bm-sim now implements the opt-in normal-entrypoint profile described by the
+previous checkpoint. Its [owning startup checklist and acceptance command](../../ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#opt-in-flight-models-startup-checkpoint-2026-10-25)
+record generated per-platform ASBs, paused authoritative-clock startup,
+time-zero observation and finite DIS/local PRD acceptance. Docker startup now
+passes with 63 DIS datagrams, 11 PRDs per reporting platform, normal process exit
+and isolated cleanup; the owning checkpoint links the accepted artifacts and
+resolved observer-import issue. No flight-models source changed in this slice.
+The legacy default still uses SuperCell. Sensor/comms, operational control/emitter
+and performance retirement gates remain open. Exact next action: implement actual
+sensor-models truth/navigation and clock consumption. New rewind/restore work
+remains deferred.
+
+### Configured ECEF navigation error and disabled terms (2026-10-25)
+
+FM-NAV-PRD-1 now accepts the bounded synthetic error model selected by the user:
+fixed ECEF position/velocity biases plus independent zero-mean isotropic Gaussian
+samples at report validity times. Physical motion/DIS, attitude and source time
+are unchanged. The model adds no coordinate conversions; the existing PRD
+boundary still converts reported state and rotates covariance once. ECEF 6x6
+[position, velocity] covariance contains sigma squared on the respective axes,
+zero cross terms, and no contribution from deterministic bias. Biases remain
+uncorrected; this covariance describes the random component about the biased
+mean, not total accuracy about physical truth.
+
+Changed paths: typed profile schema/loader and navigation configuration,
+`navigation.h/.cpp`, runtime model construction/call, configuration target link,
+zero/nonzero example profiles, and navigation/profile/PRD/runtime tests. Public
+API is `NavigationModel` plus fixed-capacity `NavigationBatch`, replacing the
+ideal-only batch while retaining its staged 15-column SoA storage. Model flags
+and covariance are cached once. Each zero bias vector bypasses addition; each
+zero sigma bypasses its entire RNG/distribution/draw path independently. All-zero
+settings use the exact scalar/SoA copy path even with `bias_gaussian` selected.
+
+Motion profiles now require a six-field `navigation` object: model,
+`position_bias_ecef_m`, `velocity_bias_ecef_mps`, `position_sigma_m`,
+`velocity_sigma_mps`, and `seed`. `ideal_test` requires all errors zero.
+The existing `synthetic_fixed_wing.json` remains the explicit zero-error default;
+`synthetic_navigation_error.json` demonstrates small nonzero settings, labeled
+synthetic rather than equipment-derived. Runtime settings select either by
+`profile_path`; no runtime schema or ai-bm-sim generator behavior changes.
+Seed tokens require exact nonnegative uint64 values; the typed loader checks the
+range because Valijson numeric schema bounds cannot represent UINT64_MAX.
+
+Samples use full-width `mt19937_64` with fixed byte-wise entity/time keys and
+separate position/velocity streams; no mutable RNG state or wall time enters the
+model. Results reproduce under identical configuration, identity, validity time
+and toolchain/build regardless of batching, interval partitioning, duplicates or
+processing order. `normal_distribution` does not promise cross-library bitwise
+parity. White sample noise and profile-wide fixed biases are explicit synthetic
+assumptions; no drift, correlations, correction or equipment calibration is
+claimed. Numerical backend/crossover and throughput qualification remain open.
+
+Validation: `./test.sh` passes all **12 CTest executables** in the maintained
+Release/Werror Docker environment. Tests cover zero-error exactness/seed
+invariance, bias-only output, independently enabled noise streams, key changes,
+scalar/batch equality and order, transactional capacity failure, malformed
+configuration/overflow, covariance mapping and runtime PRD changes with identical
+physical DIS. A fixed-seed 12,000-sample check validates Gaussian mean/variance
+within documented six-standard-error tolerances. Independent model/interface
+review found no material issue.
+Evidence: [build and tests](../logs/20261025/navigation-error/build-test.log).
+
+Real Docker startup with the nonzero example passes through simulation NATS,
+three ASBs, the real clock and C++ process: **63 DIS datagrams and 11 PRDs on each
+reporting platform's local ASB**, with strict Sleet UCI admission, normal process
+exit and isolated cleanup. Runtime unit tests separately prove the PRD value
+changes and unchanged DIS bytes. Evidence: [accepted result](../../ai-bm-sim/logs/20261025/flight-startup-201239-3539d942/observer/result.json),
+[process/ASB/cleanup log](../../ai-bm-sim/logs/20261025/flight-startup-201239-3539d942/launch.log),
+[source and binary manifest](../../ai-bm-sim/logs/20261025/flight-startup-201239-3539d942/manifest.json).
+The selected startup/policy inputs are under
+`ai-bm-sim/logs/20261025/navigation-error-acceptance/`; reproduce with the existing
+entrypoint and `--flight-models-profile` pointing to its `startup_profile.json`.
+
+This completes the requested navigation-error addition, not SuperCell retirement.
+Exact next development step remains actual sensor-models truth/navigation and
+clock consumption; communications, operational control/emitter and workload
+acceptance gates remain in their owning sequence. New rewind/restore stays deferred.

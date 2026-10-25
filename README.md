@@ -92,17 +92,46 @@ they are not DIS/UCI messages. The [input contract](docs/motion_input_contract.m
 documents supported programs, explicit resource bounds and deferred VMS/runtime
 behavior. Backend selection and population crossover remain unqualified.
 
-`IdealNavigationBatch` copies completed snapshots into separate reusable SoA
-columns. It requires explicit `ideal_test` selection, omits disabled entities,
-and reports exact position/velocity/attitude with zero covariance. That is an
-explicit test assumption, not a claim about navigation equipment accuracy.
+`NavigationModel` and `NavigationBatch` produce reported navigation separately
+from physical truth. `ideal_test` is exact; `bias_gaussian` adds configured ECEF
+position/velocity biases and independent isotropic Gaussian error. The fixed
+biases do not enter covariance. The batch retains staged SoA storage and omits
+disabled entities. These synthetic models do not qualify equipment accuracy.
+
+The `navigation` object in a selected motion profile has explicit units/settings:
+
+```json
+"navigation": {
+  "model": "bias_gaussian",
+  "position_bias_ecef_m": [1.0, -2.0, 0.5],
+  "velocity_bias_ecef_mps": [0.01, -0.02, 0.005],
+  "position_sigma_m": 1.0,
+  "velocity_sigma_mps": 0.05,
+  "seed": 20261025
+}
+```
+
+These example values are synthetic test choices. Select
+`/src/config/profiles/synthetic_navigation_error.json` as the runtime policy's
+`profile_path` to exercise them; the standard `synthetic_fixed_wing.json` keeps
+all errors zero. Settings apply to the selected runtime profile's platforms;
+identity/time keys separate their random samples. Position/velocity samples and
+ECEF axes are independent, with a new draw at each report validity time. The seed,
+entity ID and validity time make duplicates, batching, replay of the same inputs
+and interval partitioning reproducible within the same toolchain/build. The C++
+standard does not require `normal_distribution` bitwise parity across libraries.
+
+Enabled flags and covariance are cached once. A zero bias vector skips addition;
+each zero sigma independently skips RNG/distribution construction and draws.
+All-zero errors take the exact-copy path even under `bias_gaussian`. No error
+sampling or frame conversion is performed for disabled terms.
 [`encode_position_report_detailed`](include/flight_models/position_report.h)
-accepts only reported navigation and explicit identity/security metadata. It
-projects the report to WGS-84 HAE/NED using shared math and formats creation and
-validity timestamps from authoritative simulation time. It reads no wall clock.
-Explicit runtime membership and local publication are implemented for fresh runs.
-Nonideal error profiles and normal ecosystem wiring remain open; see the
-[process checkpoint](docs/implementation_plan.md#fresh-run-clock-and-output-process-2026-10-24).
+retains its existing reported-ECEF to WGS-84 HAE/NED conversion and covariance
+rotation through shared math. Physical DIS, attitude and validity time remain
+unchanged; velocity noise is sampled directly, not differentiated from position.
+No correction or estimation loop is added. Covariance describes the random
+component around the biased mean, not total accuracy about physical truth.
+
 
 Run the bounded scalar benchmark in the same cached Docker image:
 

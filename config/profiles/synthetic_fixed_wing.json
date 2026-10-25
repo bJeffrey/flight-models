@@ -2,7 +2,22 @@
   "profile_id": "synthetic-fixed-wing",
   "description": "Test-only bounded kinematics. Envelope values match route-planning/config/vehicle_profiles/generic_fixed_wing.json at this checkpoint; no aircraft qualification. Integration/capture/cadence settings are synthetic test choices. Flight-models owns this execution profile; planner subset reconciliation is required when either envelope changes.",
   "model": "bounded_kinematic_no_wind",
-  "navigation": "ideal_test",
+  "navigation": {
+    "model": "ideal_test",
+    "position_bias_ecef_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "velocity_bias_ecef_mps": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "position_sigma_m": 0.0,
+    "velocity_sigma_mps": 0.0,
+    "seed": 0
+  },
   "flight_envelope": {
     "min_speed_mps": 92.6,
     "max_speed_mps": 205.8,
