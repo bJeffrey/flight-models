@@ -51,23 +51,23 @@ target_include_directories(flight_models_runtime PUBLIC include)
 target_link_libraries(flight_models_runtime PUBLIC flight_models_motion flight_models_dis flight_models_navigation)
 
 # Domain libraries remain free of protobuf, NATS, WebSocket and process lifecycle.
-find_package(Protobuf REQUIRED)
+set(_runtime_support_default "${CMAKE_CURRENT_SOURCE_DIR}/../ai-bm-sim/libraries/runtime-support")
+if(DEFINED ENV{RUNTIME_SUPPORT_SOURCE_DIR})
+  set(_runtime_support_default "$ENV{RUNTIME_SUPPORT_SOURCE_DIR}")
+endif()
+set(RUNTIME_SUPPORT_SOURCE_DIR "${_runtime_support_default}"
+    CACHE PATH "Shared runtime-support source directory")
+set(RUNTIME_SUPPORT_WITH_SIM_TIME ON CACHE BOOL "Build the shared simulation-time adapter")
+add_subdirectory("${RUNTIME_SUPPORT_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/runtime-support" EXCLUDE_FROM_ALL)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(NATS REQUIRED IMPORTED_TARGET libnats)
-set(FLIGHT_SIM_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ai-bm-sim/schemas" CACHE PATH
-    "Authoritative simulation clock protobuf directory")
-protobuf_generate_cpp(FLIGHT_CLOCK_SOURCES FLIGHT_CLOCK_HEADERS
-    "${FLIGHT_SIM_SCHEMA_DIR}/common.proto" "${FLIGHT_SIM_SCHEMA_DIR}/sim_time.proto")
-add_library(flight_clock_proto ${FLIGHT_CLOCK_SOURCES})
-target_include_directories(flight_clock_proto PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(flight_clock_proto PUBLIC protobuf::libprotobuf)
-add_library(flight_models_process src/process_config.cpp src/clock_admission.cpp src/runtime_transport.cpp)
+add_library(flight_models_process src/process_config.cpp src/runtime_transport.cpp)
 target_compile_features(flight_models_process PUBLIC cxx_std_17)
 target_compile_options(flight_models_process PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(flight_models_process PUBLIC include PRIVATE ${VALIJSON_INCLUDE_DIR})
-target_link_libraries(flight_models_process PUBLIC flight_models_runtime flight_clock_proto
+target_link_libraries(flight_models_process PUBLIC flight_models_runtime RuntimeSupport::sim_time
     Boost::system Threads::Threads PkgConfig::NATS)
 add_executable(flight-models-run src/runtime_main.cpp)
 target_compile_options(flight-models-run PRIVATE -Wall -Wextra -Wpedantic -Werror)

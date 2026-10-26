@@ -1146,6 +1146,18 @@ and performance retirement gates remain open. Exact next action: implement actua
 sensor-models truth/navigation and clock consumption. New rewind/restore work
 remains deferred.
 
+Shared clock adoption checkpoint (2026-10-25): runtime_main now uses
+`RuntimeSupport::sim_time` from ai-bm-sim's independently buildable library.
+The local clock_admission implementation/header and duplicate common/sim_time
+Protobuf generation were removed. Existing NATS/ASB transports and fresh-run
+admission semantics are retained. CMake takes an explicit runtime-support source
+path; Compose mounts only that library and the existing authoritative schemas.
+Release build/12 CTests and the isolated live process smoke (15 DIS/six PRDs)
+pass. Evidence and the next sensor integration slice are recorded in the
+[owning shared-runtime checkpoint](/home/jeffs/git/ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#shared-runtime-time-and-header-support-2026-10-25).
+This is not operational control/emitter, new epoch/restore or SuperCell retirement
+acceptance.
+
 ### Configured ECEF navigation error and disabled terms (2026-10-25)
 
 FM-NAV-PRD-1 now accepts the bounded synthetic error model selected by the user:

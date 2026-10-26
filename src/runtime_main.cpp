@@ -1,8 +1,8 @@
 /** Fresh-run process: authoritative clock -> domain runtime -> direct transports. */
-#include "flight_models/clock_admission.h"
 #include "flight_models/process_config.h"
 #include "flight_models/runtime.h"
 #include "flight_models/runtime_transport.h"
+#include "runtime_support/simulation_clock.hpp"
 #include <algorithm>
 #include <csignal>
 #include <iostream>
@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     const auto epoch_ns = config.at("scenario_epoch_unix_ns").get<std::int64_t>();
     const auto maximum_elapsed_ns = epoch_ns > 0 ?
         std::numeric_limits<std::int64_t>::max() - epoch_ns : std::numeric_limits<std::int64_t>::max();
-    flight_models::ClockAdmission clock(config.at("run_id"), config.at("scenario_epoch_utc"),
+    runtime_support::SimulationClock clock(config.at("run_id"), {epoch_ns},
         config.at("transport").at("clock_replay_window"), maximum_elapsed_ns);
     flight_models::RuntimeTransport transport(config);
     std::signal(SIGINT, request_stop);
