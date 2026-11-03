@@ -164,4 +164,29 @@ MotionProfile load_motion_profile(const std::string& path, const std::string& sc
   return result;
 }
 
+bool same_motion_profile(const MotionProfile& a, const MotionProfile& b) noexcept {
+  return a.profile_id == b.profile_id && a.model == b.model &&
+      a.navigation.model == b.navigation.model &&
+      a.navigation.position_bias_ecef_m == b.navigation.position_bias_ecef_m &&
+      a.navigation.velocity_bias_ecef_mps == b.navigation.velocity_bias_ecef_mps &&
+      a.navigation.position_sigma_m == b.navigation.position_sigma_m &&
+      a.navigation.velocity_sigma_mps == b.navigation.velocity_sigma_mps &&
+      a.navigation.seed == b.navigation.seed &&
+      a.flight_envelope.min_speed_mps == b.flight_envelope.min_speed_mps &&
+      a.flight_envelope.max_speed_mps == b.flight_envelope.max_speed_mps &&
+      a.flight_envelope.max_acceleration_mps2 == b.flight_envelope.max_acceleration_mps2 &&
+      a.flight_envelope.max_deceleration_mps2 == b.flight_envelope.max_deceleration_mps2 &&
+      a.flight_envelope.max_turn_rate_radps == b.flight_envelope.max_turn_rate_radps &&
+      a.flight_envelope.max_climb_rate_mps == b.flight_envelope.max_climb_rate_mps &&
+      a.flight_envelope.max_descent_rate_mps == b.flight_envelope.max_descent_rate_mps &&
+      a.flight_envelope.min_altitude_hae_m == b.flight_envelope.min_altitude_hae_m &&
+      a.flight_envelope.max_altitude_hae_m == b.flight_envelope.max_altitude_hae_m &&
+      a.waypoint_capture_radius_m == b.waypoint_capture_radius_m &&
+      a.integration.max_substep_ns == b.integration.max_substep_ns &&
+      a.integration.max_interval_ns == b.integration.max_interval_ns &&
+      a.integration.max_substeps_per_interval == b.integration.max_substeps_per_interval &&
+      a.publication.dis_period_ns == b.publication.dis_period_ns &&
+      a.publication.prd_period_ns == b.publication.prd_period_ns;
+}
+
 }  // namespace flight_models

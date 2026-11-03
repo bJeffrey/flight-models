@@ -1,5 +1,6 @@
 /** Fresh-run process: authoritative clock -> domain runtime -> direct transports. */
 #include "flight_models/process_config.h"
+#include "flight_models/checkpoint_process.h"
 #include "flight_models/runtime.h"
 #include "flight_models/runtime_transport.h"
 #include "runtime_support/simulation_clock.hpp"
@@ -21,6 +22,7 @@ int main(int argc, char** argv) {
   }
   try {
     const auto config = flight_models::load_process_config(argv[1], argv[2]);
+    if (config.contains("checkpoint")) return flight_models::run_checkpoint_process(config);
     flight_models::Runtime runtime(config);
     // Validate all initial adapters before opening sockets. Hold these outputs
     // until the authority announces time zero; startup itself publishes no truth.

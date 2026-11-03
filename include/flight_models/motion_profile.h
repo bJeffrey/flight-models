@@ -65,6 +65,14 @@ struct MotionProfile {
 };
 
 /**
+ * Compare admitted profiles for process-local checkpoint compatibility.
+ * @param left First admitted motion/navigation profile.
+ * @param right Second admitted profile; no file lookup is performed.
+ * @return True when every setting and identity matches exactly.
+ */
+bool same_motion_profile(const MotionProfile& left, const MotionProfile& right) noexcept;
+
+/**
  * Load and validate a motion profile against its JSON Schema.
  *
  * @param path Profile JSON file path.

@@ -80,6 +80,36 @@ Json load_process_config(const std::string& path, const std::string& schema_path
     }
   }
 
+  if (config.contains("checkpoint")) {
+    auto& checkpoint = config.at("checkpoint");
+    for (const char* name : {"dt_us", "max_count", "max_bytes", "max_snapshot_bytes", "max_completed_operations"}) {
+      if (exact_int64(checkpoint.at(name), name) <= 0) {
+        throw std::invalid_argument(std::string("checkpoint.") + name + " must be positive");
+      }
+    }
+    const auto dt_us = exact_int64(checkpoint.at("dt_us"), "checkpoint.dt_us");
+    if (dt_us > std::numeric_limits<std::int64_t>::max() / 1000 || end % (dt_us * 1000) != 0) {
+      throw std::invalid_argument("checkpoint-enabled scenario end must align with its fixed simulation interval");
+    }
+    const auto clock_subject = config.at("transport").at("clock_subject").get<std::string>();
+    const auto request_subject = checkpoint.at("request_subject").get<std::string>();
+    const auto response_subject = checkpoint.at("response_subject").get<std::string>();
+    const auto clock_dot = clock_subject.find('.');
+    const auto request_dot = request_subject.find('.');
+    const std::regex exact_subject(R"(^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$)");
+    if (!std::regex_match(clock_subject, exact_subject) || clock_dot == std::string::npos ||
+        request_dot == std::string::npos || clock_subject.substr(0, clock_dot) != request_subject.substr(0, request_dot)) {
+      throw std::invalid_argument("checkpoint request and clock subjects need a shared bounded token prefix");
+    }
+    if (request_subject == clock_subject || response_subject == clock_subject || request_subject == response_subject) {
+      throw std::invalid_argument("clock/checkpoint request/response subjects must be distinct");
+    }
+    const std::filesystem::path directory = checkpoint.at("run_directory").get<std::string>();
+    if (directory.is_relative()) {
+      checkpoint["run_directory"] = (std::filesystem::absolute(path).parent_path() / directory).lexically_normal().string();
+    }
+  }
+
   std::set<std::string> ids, systems, dis_ids;
   for (const auto& entity : config.at("entities")) {
     if (!ids.insert(entity.at("id").get<std::string>()).second) {

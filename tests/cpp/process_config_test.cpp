@@ -27,6 +27,33 @@ int main(int argc, char** argv) {
     require(rejected);
   };
   require(load(valid).at("entities").size() == 3);
+  Json checkpoint_profile;
+  { std::ifstream profile(root / "tests/fixtures/checkpoint_profile.json"); profile >> checkpoint_profile; }
+  auto checkpoint_config = valid;
+  checkpoint_config["checkpoint"] = checkpoint_profile;
+  require(load(checkpoint_config).at("checkpoint").at("run_directory") ==
+          (path.parent_path() / "checkpoint-state").string());
+  auto invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["checkpoint"]["dt_us"] = 1.5;
+  reject(invalid_checkpoint);
+  invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["checkpoint"]["request_subject"] = valid["transport"]["clock_subject"];
+  reject(invalid_checkpoint);
+  invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["checkpoint"]["request_subject"] = "other.checkpoint.request";
+  reject(invalid_checkpoint);
+  invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["transport"]["clock_subject"] = "sim";
+  reject(invalid_checkpoint);
+  invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["checkpoint"]["state_schema"] = "different-domain";
+  reject(invalid_checkpoint);
+  invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["end_time_ns"] = 400000001;
+  reject(invalid_checkpoint);
+  invalid_checkpoint = checkpoint_config;
+  invalid_checkpoint["checkpoint"].erase("max_snapshot_bytes");
+  reject(invalid_checkpoint);
   auto bad = valid; bad["scenario_epoch_unix_ns"] = std::numeric_limits<std::uint64_t>::max(); reject(bad);
   bad = valid; bad["scenario_epoch_utc"] = "2026-10-25T00:00:00Z"; reject(bad);
   bad = valid; bad["transport"].erase("pending_byte_limit"); reject(bad);

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace flight_models {
@@ -56,6 +57,28 @@ struct WaypointTransition {
   std::int64_t time_ns{}; /**< Capture time, scenario nanoseconds. */
 };
 
+/** One entity's committed continuation state, identified independently of store handles. */
+struct MotionDriverCheckpointRow {
+  std::string entity_id; /**< Stable state-store entity identity. */
+  EntityMode mode{}; /**< Fixed/moving mode at capture. */
+  PhysicalState state{}; /**< ECEF state and scenario source time. */
+  DesiredMotion desired{}; /**< Active target at capture. */
+  std::size_t command_index{}; /**< Next timed command, bounded by the immutable program. */
+  std::size_t waypoint_index{}; /**< Next waypoint, bounded by the immutable program. */
+};
+
+/** In-memory-only continuation payload. No durable or cross-version format is implied. */
+struct MotionDriverCheckpoint {
+  bool initialized{}; /**< Whether time zero has been processed. */
+  std::int64_t time_ns{}; /**< Last committed scenario boundary, ns. */
+  std::vector<MotionDriverCheckpointRow> rows; /**< Exact enabled cohort by entity ID. */
+ private:
+  struct Compatibility;
+  std::shared_ptr<const Compatibility> compatibility_;
+  friend class MotionDriver;
+  friend class Runtime;
+};
+
 /**
  * Single-owner event driver for one fixed profile cohort in a fresh run.
  * Programs and store membership must remain fixed for the driver's lifetime.
@@ -103,6 +126,22 @@ class MotionDriver {
   const std::vector<WaypointTransition>& transitions() const noexcept;
   /** @throws std::invalid_argument if entity is not in this driver's cohort. */
   std::size_t waypoint_progress(Handle entity) const;
+
+  /**
+   * Capture committed rows and progress plus an opaque immutable-program compatibility token.
+   * The payload is process-local and intended only for restore into a fresh compatible driver.
+   * @return Owning physical/desired rows and progress; last-call outputs and scratch are excluded.
+   * @throws std::logic_error if the store cohort changed.
+   */
+  MotionDriverCheckpoint checkpoint() const;
+  /**
+   * Restore into this freshly constructed driver over a zero-time candidate store.
+   * @param checkpoint Process-local capture with the same admitted profile, limits and programs.
+   * No outputs are emitted or retained from the captured boundary.
+   * @throws std::invalid_argument for stale/mismatched payloads, invalid times/progress, or a nonfresh target.
+   * Validation completes before the candidate store is committed.
+   */
+  void restore(const MotionDriverCheckpoint& checkpoint);
 
  private:
   struct Impl;

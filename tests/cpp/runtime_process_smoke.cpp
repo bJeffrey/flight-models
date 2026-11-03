@@ -2,6 +2,9 @@
 #include "system_owp_probe.h"
 #include "sensor_models/dis/entity_state_decoder.hpp"
 #include "flight_models/runtime.h"
+#include "runtime_control.pb.h"
+#include "checkpoint_runtime/store.hpp"
+#include <algorithm>
 #include "sim_time.pb.h"
 #include <nats/nats.h>
 #include <boost/asio.hpp>
@@ -90,11 +93,12 @@ std::string read_log(const std::string& path) {
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 void publish_tick(natsConnection* nc, const std::string& run, std::uint64_t id,
-                  std::uint64_t us, std::uint64_t dt, bool advances, bool paused) {
+                  std::uint64_t us, std::uint64_t dt, bool advances, bool paused,
+                  std::uint32_t epoch = 0) {
   rlbm::proto::SimTimeTick tick;
   tick.set_run_id(run); tick.set_tick_id(id); tick.set_t_us(us); tick.set_dt_us(dt);
   tick.set_rate(1.0); tick.set_advances_time(advances); tick.set_paused(paused);
-  tick.set_timeline_epoch(0); tick.set_scenario_epoch_utc("2026-10-24T00:00:00Z");
+  tick.set_timeline_epoch(epoch); tick.set_scenario_epoch_utc("2026-10-24T00:00:00Z");
   tick.set_mode(rlbm::proto::MODE_CONSTRUCTIVE);
   std::string bytes;
   require(tick.SerializeToString(&bytes), "cannot serialize SimTimeTick");
@@ -102,6 +106,64 @@ void publish_tick(natsConnection* nc, const std::string& run, std::uint64_t id,
   require(status == NATS_OK, std::string("NATS tick publish: ") + natsStatus_GetText(status));
   natsConnection_FlushTimeout(nc, 1000);
 }
+
+struct ResponseSubscription {
+  natsSubscription* subscription{};
+  ~ResponseSubscription() { if (subscription) natsSubscription_Destroy(subscription); }
+};
+
+rlbm::proto::ServiceCheckpointRequest checkpoint_request(
+    const std::string& operation, rlbm::proto::CheckpointOperationKind kind,
+    rlbm::proto::CheckpointPhase phase, std::uint64_t tick, std::uint64_t time_us,
+    std::uint32_t current_epoch, std::uint32_t target_epoch) {
+  rlbm::proto::ServiceCheckpointRequest request;
+  request.set_operation_id(operation);
+  request.set_checkpoint_id("motion-200");
+  request.set_kind(kind);
+  request.set_phase(phase);
+  request.set_current_epoch(current_epoch);
+  request.set_target_epoch(target_epoch);
+  request.add_required_service_ids("flight-models");
+  auto* source = request.mutable_source();
+  source->set_run_id("flight-process-smoke");
+  source->set_source_epoch(0);
+  source->set_tick_id(tick);
+  source->set_t_us(time_us);
+  source->set_dt_us(100000);
+  source->set_scenario_epoch_utc("2026-10-24T00:00:00Z");
+  if (kind != rlbm::proto::CHECKPOINT_OPERATION_CAPTURE) {
+    request.set_manifest_ref("checkpoint://flight-models/motion-200/manifest.json");
+  }
+  return request;
+}
+
+rlbm::proto::ServiceCheckpointResponse exchange_checkpoint(
+    natsConnection* connection, natsSubscription* subscription,
+    const rlbm::proto::ServiceCheckpointRequest& request, int timeout_ms) {
+  std::string bytes;
+  require(request.SerializeToString(&bytes), "cannot encode checkpoint request");
+  require(natsConnection_Publish(connection, "sim.checkpoint.request", bytes.data(),
+          static_cast<int>(bytes.size())) == NATS_OK, "checkpoint request publication failed");
+  require(natsConnection_FlushTimeout(connection, timeout_ms) == NATS_OK, "checkpoint request flush failed");
+  natsMsg* received = nullptr;
+  require(natsSubscription_NextMsg(&received, subscription, timeout_ms) == NATS_OK,
+          "checkpoint acknowledgement timed out");
+  const std::unique_ptr<natsMsg, decltype(&natsMsg_Destroy)> guard(received, &natsMsg_Destroy);
+  rlbm::proto::ServiceCheckpointResponse response;
+  require(response.ParseFromArray(natsMsg_GetData(received), natsMsg_GetDataLength(received)),
+          "cannot decode checkpoint acknowledgement");
+  require(response.operation_id() == request.operation_id() && response.phase() == request.phase() &&
+          response.kind() == request.kind() && response.current_epoch() == request.current_epoch() &&
+          response.target_epoch() == request.target_epoch() &&
+          response.source().SerializeAsString() == request.source().SerializeAsString(),
+          "checkpoint acknowledgement correlation changed");
+  require(response.service_id() == "flight-models" && response.software_id() == "native-process-test" &&
+          response.config_id() == "native-process-fixture" &&
+          response.state_schema() == "flight-models.runtime-checkpoint" && response.state_version() == "1",
+          "checkpoint acknowledgement omitted exact service identity");
+  return response;
+}
+
 }
 
 int main(int argc, char** argv) {
@@ -249,6 +311,169 @@ int main(int argc, char** argv) {
             "forbidden-topic publication did not return a bounded process failure");
     require(read_log(negative_log).find("OWP PUB") != std::string::npos,
             "forbidden-topic failure was not surfaced");
+    // Reuse the real NATS and platform ASBs for native checkpoint/epoch control.
+    // Remove any truth emitted before the deliberately failed prior publication.
+    for (;;) {
+      std::array<std::uint8_t, 2048> discarded{};
+      boost::system::error_code error;
+      udp.receive(boost::asio::buffer(discarded), 0, error);
+      if (error == boost::asio::error::would_block || error == boost::asio::error::try_again) break;
+      require(!error, "cannot drain prior test truth");
+    }
+    fixture["entities"][0]["prd"]["topic"] = "contract.prd";
+    fixture["profile_path"] = "/src/config/profiles/synthetic_navigation_error.json";
+    { std::ifstream profile("tests/fixtures/checkpoint_profile.json"); profile >> fixture["checkpoint"]; }
+    fixture["checkpoint"]["run_directory"] = artifacts + "/checkpoint-state";
+    const auto checkpoint_config = artifacts + "/runtime-checkpoint.json";
+    { std::ofstream file(checkpoint_config); file << fixture.dump(2); }
+    ResponseSubscription responses;
+    require(natsConnection_SubscribeSync(&responses.subscription, nc.connection, "sim.checkpoint.response") == NATS_OK,
+            "cannot subscribe checkpoint responses");
+    require(natsConnection_FlushTimeout(nc.connection, probe_timeout) == NATS_OK,
+            "checkpoint response subscription was not admitted");
+    auto checkpoint_a = std::make_shared<comms_models::test::SystemOwpProbe>(
+        io_runner.io, "ws://asb-1:9000/owp", "contract-test", "002.5.0", probe_timeout);
+    auto checkpoint_b = std::make_shared<comms_models::test::SystemOwpProbe>(
+        io_runner.io, "ws://asb-2:9000/owp", "contract-test", "002.5.0", probe_timeout);
+    checkpoint_a->start();
+    checkpoint_b->start();
+    require(checkpoint_a->wait_ready() && checkpoint_b->wait_ready(), "checkpoint observers did not initialize");
+    require(checkpoint_a->subscribe("PositionReportDetailed", "contract.prd") &&
+            checkpoint_b->subscribe("PositionReportDetailed", "contract.prd"), "checkpoint PRD subscription failed");
+    auto launch_checkpoint = [&](const std::string& process_log, bool recovery) {
+      child.launch(runner, checkpoint_config, schema, process_log);
+      const auto deadline = std::chrono::steady_clock::now() + operation_timeout + 2s;
+      while (std::chrono::steady_clock::now() < deadline &&
+             read_log(process_log).find("checkpoint=flight-models") == std::string::npos) {
+        std::this_thread::sleep_for(20ms);
+      }
+      require(read_log(process_log).find(recovery ? "recovery=1" : "recovery=0") != std::string::npos,
+              "checkpoint process startup/session state differs; see " + process_log);
+    };
+    auto exchange = [&](const auto& request, bool success) {
+      const auto response = exchange_checkpoint(nc.connection, responses.subscription, request, probe_timeout);
+      require(response.success() == success, "checkpoint phase outcome differed: " + response.failure_reason());
+      return response;
+    };
+    std::vector<std::vector<std::uint8_t>> expected_dis;
+    std::vector<std::string> checkpoint_prds;
+    auto collect_checkpoint = [&](const auto& outputs) {
+      for (const auto& output : outputs) {
+        if (!output.dis.empty()) expected_dis.push_back(output.dis);
+        if (!output.prd.is_null()) checkpoint_prds.push_back(output.prd.dump());
+      }
+    };
+    flight_models::Runtime checkpoint_reference(fixture);
+    collect_checkpoint(checkpoint_reference.advance_to(0));
+    collect_checkpoint(checkpoint_reference.advance_to(100000000));
+    collect_checkpoint(checkpoint_reference.advance_to(200000000));
+    const auto saved_payload = checkpoint_reference.encode_checkpoint();
+    collect_checkpoint(checkpoint_reference.advance_to(300000000));
+    checkpoint_reference = checkpoint_reference.prepare_restore(saved_payload);
+    collect_checkpoint(checkpoint_reference.advance_to(300000000));
+    collect_checkpoint(checkpoint_reference.advance_to(400000000));
+
+    const auto checkpoint_log = artifacts + "/flight-process-checkpoint.log";
+    launch_checkpoint(checkpoint_log, false);
+    exchange(checkpoint_request("early", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
+             rlbm::proto::CHECKPOINT_PHASE_FENCE, 0, 0, 0, 0), false);
+    publish_tick(nc.connection, run, 0, 0, 0, false, true);
+    publish_tick(nc.connection, run, 1, 100000, 100000, true, false);
+    publish_tick(nc.connection, run, 2, 200000, 100000, true, false);
+    auto capture_request = checkpoint_request("capture", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
+        rlbm::proto::CHECKPOINT_PHASE_FENCE, 2, 200000, 0, 0);
+    exchange(capture_request, true);
+    capture_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_SNAPSHOT);
+    const auto captured = exchange(capture_request, true);
+    require(captured.payload_size() > 0 && captured.payload_sha256().size() == 64 &&
+            captured.bundle_size() > captured.payload_size(), "capture omitted opaque storage metadata");
+    require(exchange(capture_request, true).SerializeAsString() == captured.SerializeAsString(),
+            "duplicate snapshot did not return its original acknowledgement");
+    capture_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_RELEASE);
+    exchange(capture_request, true);
+    publish_tick(nc.connection, run, 3, 300000, 100000, true, false);
+    auto restore_request = checkpoint_request("restore", rlbm::proto::CHECKPOINT_OPERATION_RESTORE,
+        rlbm::proto::CHECKPOINT_PHASE_PREPARE_RESTORE, 2, 200000, 0, 1);
+    exchange(restore_request, true);
+    restore_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_APPLY_RESTORE);
+    exchange(restore_request, true);
+    restore_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_RELEASE);
+    exchange(restore_request, false); // Clock commit has not yet been announced.
+    publish_tick(nc.connection, run, 0, 200000, 100000, false, true, 1);
+    publish_tick(nc.connection, run, 4, 400000, 100000, true, false, 0); // Fenced old epoch.
+    exchange(restore_request, true);
+    publish_tick(nc.connection, run, 1, 300000, 100000, true, false, 1);
+    publish_tick(nc.connection, run, 2, 400000, 100000, true, false, 1);
+
+    auto verify_checkpoint_outputs = [&](const std::vector<std::vector<std::uint8_t>>& physical,
+                                         const std::vector<std::string>& navigation,
+                                         const std::string& process_log) {
+      std::vector<std::vector<std::uint8_t>> received;
+      const auto deadline = std::chrono::steady_clock::now() + operation_timeout;
+      while (received.size() < physical.size() && std::chrono::steady_clock::now() < deadline) {
+        std::array<std::uint8_t, 2048> packet{};
+        boost::system::error_code error;
+        const auto count = udp.receive(boost::asio::buffer(packet), 0, error);
+        if (error == boost::asio::error::would_block || error == boost::asio::error::try_again) {
+          std::this_thread::sleep_for(5ms);
+          continue;
+        }
+        require(!error, "checkpoint truth receive failed");
+        received.emplace_back(packet.begin(), packet.begin() + count);
+      }
+      auto expected = physical;
+      std::sort(expected.begin(), expected.end());
+      std::sort(received.begin(), received.end());
+      require(received == expected, "checkpoint continuation changed physical DIS bytes or multiplicity");
+      for (std::size_t index = 0; index < navigation.size(); index += 2) {
+        require(checkpoint_a->expect("contract.prd", navigation[index], true, probe_timeout) &&
+                checkpoint_b->expect("contract.prd", navigation[index + 1], true, probe_timeout),
+                "checkpoint continuation changed noisy PRDs or repeated captured outputs");
+      }
+      require(checkpoint_a->expect("contract.prd", "", false, 100) &&
+              checkpoint_b->expect("contract.prd", "", false, 100), "unexpected checkpoint PRD publication");
+      const auto status = child.wait_for_exit(operation_timeout + 2s);
+      require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "checkpoint process did not exit normally");
+      const std::string count_line = "flight-models stopped dis=" + std::to_string(physical.size()) +
+          " prd=" + std::to_string(navigation.size());
+      require(read_log(process_log).find(count_line) != std::string::npos,
+              "checkpoint process published unexpected extra outputs");
+    };
+    verify_checkpoint_outputs(expected_dis, checkpoint_prds, checkpoint_log);
+
+    // Restart from the same durable session: no fresh zero-time output may escape.
+    const auto recovery_log = artifacts + "/flight-process-checkpoint-recovery.log";
+    launch_checkpoint(recovery_log, true);
+    publish_tick(nc.connection, run, 0, 0, 0, false, true);
+    require(checkpoint_a->expect("contract.prd", "", false, 100) &&
+            checkpoint_b->expect("contract.prd", "", false, 100), "restart leaked fresh initial PRDs");
+    auto recovery_request = checkpoint_request("recover", rlbm::proto::CHECKPOINT_OPERATION_RECOVER,
+        rlbm::proto::CHECKPOINT_PHASE_PREPARE_RESTORE, 2, 200000, 1, 2);
+    exchange(recovery_request, true);
+    recovery_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_APPLY_RESTORE);
+    exchange(recovery_request, true);
+    publish_tick(nc.connection, run, 0, 200000, 100000, false, true, 2);
+    recovery_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_RELEASE);
+    exchange(recovery_request, true);
+    publish_tick(nc.connection, run, 1, 300000, 100000, true, false, 2);
+    publish_tick(nc.connection, run, 2, 400000, 100000, true, false, 2);
+    expected_dis.clear();
+    checkpoint_prds.clear();
+    flight_models::Runtime recovered_reference(fixture);
+    recovered_reference = recovered_reference.prepare_restore(saved_payload);
+    collect_checkpoint(recovered_reference.advance_to(300000000));
+    collect_checkpoint(recovered_reference.advance_to(400000000));
+    verify_checkpoint_outputs(expected_dis, checkpoint_prds, recovery_log);
+    checkpoint_a->stop();
+    checkpoint_b->stop();
+    nlohmann::json checkpoint_result;
+    checkpoint_result["accepted"] = true;
+    checkpoint_result["capture_elapsed_us"] = 200000;
+    checkpoint_result["restore_epochs"] = {1, 2};
+    checkpoint_result["cold_restart_initial_output_fenced"] = true;
+    checkpoint_result["noisy_prd_and_dis_continuation_exact"] = true;
+    { std::ofstream file(artifacts + "/checkpoint-result.json"); file << checkpoint_result.dump(2) << '\n'; }
+
     std::cout << "runtime process smoke passed; log=" << log << '\n';
     return 0;
   } catch (const std::exception& error) {

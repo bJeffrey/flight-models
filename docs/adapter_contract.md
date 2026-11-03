@@ -163,11 +163,19 @@ and execution-status adapters are the existing examples for route correlation
 and feedback; SuperCell's sample route does not define permission or execution
 authority.
 
-No standard UCI authorization carrier, execution permission mapping, DIS entity
-identity registry, canonical simulation time mapping, validated navigation
-error profile, or accepted covariance realism is established by this audit.
-Those remain explicit FM-CONTRACT-1 gaps. No emission/transmitter carrier is
-selected by this field inventory.
+The initial inventory did not establish authorization carriers, execution
+permission, identity/time mappings or navigation realism. The implemented
+state/time and reported-navigation sections above now define the bounded
+identity, canonical scenario time and configured navigation-error contracts.
+The [ecosystem retirement checkpoint](../../ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#bounded-default-cutover-and-contract-disposition-2026-11-02)
+owns their live replacement acceptance; this inventory is not a second checklist.
+
+New operational authorization/execution adapters, equipment-realistic covariance
+and emission/transmitter carriers remain target contracts. The inspected legacy
+`src/dis.rs` produces EntityState PDUs, not radio emission/transmitter PDUs;
+the bounded replacement retains sensor-owned emitter configuration. Those new
+carriers and the previously unconnected planner-to-motion execution path are not
+claimed by retiring the accepted bounded SuperCell startup.
 
 ## Validation candidates
 

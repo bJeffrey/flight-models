@@ -12,16 +12,26 @@ The [Ecosystem Message Architecture](/home/jeffs/git/ai-bm-sim/docs/architecture
 owns service boundaries and transport ownership; its [shared bus and timing
 decision](/home/jeffs/git/ai-bm-sim/docs/architecture/ecosystem_message_architecture.md#shared-buses-and-flight-timing-2026-10-21)
 records the current NATS and simulation-clock contract. The fresh-run runtime and
-finite opt-in startup are implemented; full replacement acceptance remains open.
+[bounded default startup](../../ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#bounded-default-cutover-and-contract-disposition-2026-11-02)
+are accepted with explicit SuperCell rollback. Broader promoted policy/route and
+operational control/emitter qualification remains open; it is not claimed by that
+backend cutover. Operator-GUI integration, including coherent live rewind/restore,
+is still required before retirement acceptance.
 
 The first FM-CONTRACT-1 slice adds the [state/time contract](state_time_contract.md),
 [existing adapter inventory](adapter_contract.md) and executable C++ contract/UCI
 schema checks. See the [repository commands](../README.md) and latest checkpoint
 in the owning implementation plan. Route-planning PRD identity/heading
 compatibility now passes local tests. Live input integration and operational
-control/emitter mappings keep the full contract gate open. New cross-service
-epoch/restore handling follows SuperCell deprecation; it is not a prerequisite
-for the replacement runtime.
+control/emitter mappings keep the full contract gate open. The user now requires
+live scenario rewind/restore with the supported GUI; this supersedes the earlier
+deferral until after SuperCell deprecation. Flight-models owns its continuation
+API; ai-bm-sim owns distributed coordination and the GUI. The
+[durable payload and prepared-candidate checkpoint](implementation_plan.md#durable-runtime-payload-and-prepared-candidate-2026-11-02)
+passes local continuation tests. The [native process binding](implementation_plan.md#native-process-checkpoint-and-restored-clock-boundary-2026-11-02)
+now also passes real NATS/two-ASB capture, restore and cold-restart recovery.
+Generated ecosystem checkpoint wiring and the remaining service adapters are
+still required before coordinated live seek.
 
 The [bounded motion/input contract](motion_input_contract.md) and typed profile
 loader establish the local motion prerequisites. Remaining operational

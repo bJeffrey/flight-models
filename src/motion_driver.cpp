@@ -24,6 +24,25 @@ bool finite(const Vector3& value) {
   return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
+bool same_vector(const Vector3& a, const Vector3& b) {
+  return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+bool same_state(const PhysicalState& a, const PhysicalState& b) {
+  return same_vector(a.position_ecef_m, b.position_ecef_m) &&
+      same_vector(a.velocity_ecef_mps, b.velocity_ecef_mps) &&
+      same_vector(a.acceleration_ecef_mps2, b.acceleration_ecef_mps2) &&
+      a.body_frd_to_ecef == b.body_frd_to_ecef &&
+      same_vector(a.angular_velocity_body_radps, b.angular_velocity_body_radps) &&
+      a.source_time_ns == b.source_time_ns;
+}
+
+bool same_desired(const DesiredMotion& a, const DesiredMotion& b) {
+  return a.heading_rad == b.heading_rad &&
+      a.horizontal_speed_mps == b.horizontal_speed_mps &&
+      a.altitude_hae_m == b.altitude_hae_m;
+}
+
 /** Evaluate route bearing using the shared ECEF/local LOS convention. */
 double bearing_to(Vector3 from, Vector3 to) {
   const auto location = math::coordinates::ecef_to_geodetic(from);
@@ -233,6 +252,40 @@ struct MotionDriver::Impl {
   }
 };
 
+struct MotionDriverCheckpoint::Compatibility {
+  MotionProfile profile;
+  DriverLimits limits;
+  std::vector<EntityProgram> programs;
+};
+
+namespace {
+
+bool same_programs(const std::vector<EntityProgram>& a, const std::vector<EntityProgram>& b) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    const auto& left = a[i];
+    const auto& right = b[i];
+    if (left.entity != right.entity || left.navigation_reporting != right.navigation_reporting ||
+        left.waypoints.size() != right.waypoints.size() || left.commands.size() != right.commands.size()) return false;
+    for (std::size_t j = 0; j < left.waypoints.size(); ++j) {
+      const auto& x = left.waypoints[j].position_ecef_m;
+      const auto& y = right.waypoints[j].position_ecef_m;
+      if (x.x != y.x || x.y != y.y || x.z != y.z) return false;
+    }
+    for (std::size_t j = 0; j < left.commands.size(); ++j) {
+      const auto& x = left.commands[j];
+      const auto& y = right.commands[j];
+      if (x.time_ns != y.time_ns || x.sequence != y.sequence ||
+          x.desired.heading_rad != y.desired.heading_rad ||
+          x.desired.horizontal_speed_mps != y.desired.horizontal_speed_mps ||
+          x.desired.altitude_hae_m != y.desired.altitude_hae_m) return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 MotionDriver::MotionDriver(StateStore& store, std::size_t profile_index, MotionProfile profile,
                            DriverLimits limits, std::vector<EntityProgram> programs)
     : impl_(std::make_unique<Impl>(store, profile_index, std::move(profile), limits, std::move(programs))) {}
@@ -419,6 +472,151 @@ const std::vector<WaypointTransition>& MotionDriver::transitions() const noexcep
 std::size_t MotionDriver::waypoint_progress(Handle entity) const {
   for (const auto& program : impl_->programs) if (program.program.entity == entity) return program.waypoint_index;
   throw std::invalid_argument("entity is not in this motion driver cohort");
+}
+
+MotionDriverCheckpoint MotionDriver::checkpoint() const {
+  const Impl& x = *impl_;
+  if (x.store.membership_revision() != x.membership_revision) {
+    throw std::logic_error("store cohort changed during motion driver lifetime");
+  }
+  Snapshot snapshot(x.store.size());
+  x.store.snapshot(snapshot);
+  MotionDriverCheckpoint result;
+  result.initialized = x.initialized;
+  result.time_ns     = x.now;
+  result.rows.reserve(x.programs.size());
+  for (const auto& program : x.programs) {
+    const SnapshotRow* found = nullptr;
+    for (std::size_t i = 0; i < snapshot.size(); ++i) {
+      if (snapshot.rows()[i].handle == program.program.entity) {
+        found = &snapshot.rows()[i];
+        break;
+      }
+    }
+    if (found == nullptr) throw std::logic_error("motion driver cohort no longer matches store");
+    MotionDriverCheckpointRow row{
+        found->id, found->mode, found->state, found->desired,
+        program.command_index, program.waypoint_index};
+    result.rows.push_back(std::move(row));
+  }
+  auto compatibility = std::make_shared<MotionDriverCheckpoint::Compatibility>();
+  compatibility->profile = x.profile;
+  compatibility->limits  = x.limits;
+  compatibility->programs.reserve(x.programs.size());
+  for (const auto& program : x.programs) compatibility->programs.push_back(program.program);
+  result.compatibility_ = std::move(compatibility);
+  return result;
+}
+
+void MotionDriver::restore(const MotionDriverCheckpoint& checkpoint) {
+  Impl& x = *impl_;
+  if (x.initialized || x.now != 0 || x.store.membership_revision() != x.membership_revision) {
+    throw std::invalid_argument("motion driver restore target must be fresh");
+  }
+
+  // Program/profile identity is immutable across a continuation boundary.
+  std::vector<EntityProgram> target_programs;
+  target_programs.reserve(x.programs.size());
+  for (const auto& program : x.programs) target_programs.push_back(program.program);
+  const auto& compatibility = checkpoint.compatibility_;
+  if (!compatibility || !same_motion_profile(x.profile, compatibility->profile) ||
+      compatibility->limits.max_commands != x.limits.max_commands ||
+      compatibility->limits.max_waypoints != x.limits.max_waypoints ||
+      compatibility->limits.max_samples != x.limits.max_samples ||
+      compatibility->limits.max_transitions != x.limits.max_transitions ||
+      compatibility->limits.max_events != x.limits.max_events ||
+      !same_programs(compatibility->programs, target_programs)) {
+    throw std::invalid_argument("motion driver checkpoint program or profile mismatch");
+  }
+  if (checkpoint.time_ns < 0 || (!checkpoint.initialized && checkpoint.time_ns != 0) ||
+      checkpoint.rows.size() != x.programs.size()) {
+    throw std::invalid_argument("invalid motion driver checkpoint boundary or cohort size");
+  }
+
+  // Resolve rows by stable entity ID; caller-held handles never cross store instances.
+  Snapshot store_snapshot(x.store.size());
+  x.store.snapshot(store_snapshot);
+  std::unordered_map<std::string, std::size_t> program_by_id;
+  std::unordered_map<std::string, EntityMode> mode_by_id;
+  std::unordered_map<std::string, PhysicalState> initial_state_by_id;
+  std::unordered_map<std::string, DesiredMotion> initial_desired_by_id;
+  program_by_id.reserve(x.programs.size());
+  mode_by_id.reserve(x.programs.size());
+  initial_state_by_id.reserve(x.programs.size());
+  initial_desired_by_id.reserve(x.programs.size());
+  for (std::size_t row_index = 0; row_index < store_snapshot.size(); ++row_index) {
+    const SnapshotRow& row = store_snapshot.rows()[row_index];
+    if (row.profile_index != x.profile_index || row.mode == EntityMode::disabled) continue;
+    const auto program = std::find_if(x.programs.begin(), x.programs.end(), [&row](const auto& item) {
+      return item.program.entity == row.handle;
+    });
+    if (program != x.programs.end()) {
+      const std::size_t index = static_cast<std::size_t>(program - x.programs.begin());
+      program_by_id.emplace(row.id, index);
+      mode_by_id.emplace(row.id, row.mode);
+      initial_state_by_id.emplace(row.id, row.state);
+      initial_desired_by_id.emplace(row.id, row.desired);
+    }
+  }
+  std::vector<const MotionDriverCheckpointRow*> ordered(x.programs.size(), nullptr);
+  for (const auto& row : checkpoint.rows) {
+    const auto found = program_by_id.find(row.entity_id);
+    if (found == program_by_id.end() || ordered[found->second] != nullptr ||
+        row.mode == EntityMode::disabled || row.state.source_time_ns != checkpoint.time_ns ||
+        (!checkpoint.initialized && (row.state.source_time_ns != 0 || row.command_index != 0 || row.waypoint_index != 0))) {
+      throw std::invalid_argument("invalid motion driver checkpoint row identity, time, or progress");
+    }
+    const auto& program = x.programs[found->second];
+    const auto mode = mode_by_id.find(row.entity_id);
+    std::size_t due_commands = 0;
+    while (checkpoint.initialized && due_commands < program.program.commands.size() &&
+           program.program.commands[due_commands].time_ns <= checkpoint.time_ns) ++due_commands;
+    const bool invalid_progress = row.command_index != due_commands ||
+        row.waypoint_index > program.program.waypoints.size() ||
+        (row.mode == EntityMode::fixed && row.waypoint_index != 0);
+    if (mode == mode_by_id.end() || row.mode != mode->second || invalid_progress) {
+      throw std::invalid_argument("motion driver checkpoint has incompatible mode or progress");
+    }
+
+    // Fresh captures retain initial conditions; fixed entities can only advance time.
+    if (!checkpoint.initialized || row.mode == EntityMode::fixed) {
+      auto initial_state = initial_state_by_id.at(row.entity_id);
+      if (row.mode == EntityMode::fixed) initial_state.source_time_ns = checkpoint.time_ns;
+      const bool initial_state_matches = same_state(row.state, initial_state);
+      const bool initial_target_matches = same_desired(row.desired, initial_desired_by_id.at(row.entity_id));
+      if (!initial_state_matches || !initial_target_matches) {
+        throw std::invalid_argument("checkpoint changed immutable initial conditions");
+      }
+    }
+    ordered[found->second] = &row;
+  }
+  if (std::find(ordered.begin(), ordered.end(), nullptr) != ordered.end()) {
+    throw std::invalid_argument("motion driver checkpoint cohort mismatch");
+  }
+
+  // Commit only after all rows and progress have passed validation.
+  x.store.gather(x.cohort.data(), x.cohort.size(), x.staged);
+  for (std::size_t row = 0; row < x.cohort.size(); ++row) {
+    const auto program = std::find_if(x.programs.begin(), x.programs.end(), [&x, row](const auto& item) {
+      return item.program.entity == x.cohort[row];
+    });
+    const std::size_t program_index = static_cast<std::size_t>(program - x.programs.begin());
+    x.staged.write_state(row, ordered[program_index]->state, ordered[program_index]->desired);
+  }
+  // A zero-duration model call reuses envelope and attitude validation without
+  // integrating or changing captured values; invalid candidates remain private.
+  advance_motion_batch(x.staged, x.profile, checkpoint.time_ns, nullptr, 0);
+  x.store.commit(x.staged);
+  for (std::size_t i = 0; i < ordered.size(); ++i) {
+    x.programs[i].command_index  = ordered[i]->command_index;
+    x.programs[i].waypoint_index = ordered[i]->waypoint_index;
+  }
+  x.now         = checkpoint.time_ns;
+  x.initialized = checkpoint.initialized;
+  x.output_samples.clear();
+  x.output_transitions.clear();
+  x.provisional_samples.clear();
+  x.provisional_transitions.clear();
 }
 
 }  // namespace flight_models

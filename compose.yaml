@@ -28,6 +28,13 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      # Native checkpoint mechanics remain a separately owned library.
+      - type: bind
+        source: ${CHECKPOINT_RUNTIME_REPO:-../checkpoint-runtime}
+        target: /checkpoint-runtime
+        read_only: true
+        bind:
+          create_host_path: false
       # Shared convention-controlled types/math stay owned by the math repository.
       - type: bind
         source: ${FLIGHT_MATH_REPO:-../math}

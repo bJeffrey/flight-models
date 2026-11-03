@@ -152,13 +152,13 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 2147483647,
-          "description": "Clock subscription bound and global PRD publisher message bound across all ASBs."
+          "description": "Clock/control subscription bound and global PRD publisher message bound across all ASBs."
         },
         "pending_byte_limit": {
           "type": "integer",
           "minimum": 1,
           "maximum": 2147483647,
-          "description": "Clock subscription bound, maximum incoming WebSocket frame size, and global pending PRD bytes across ASBs."
+          "description": "Clock/control subscription bound, maximum incoming WebSocket frame size, and global pending PRD bytes across ASBs."
         },
         "clock_replay_window": {
           "type": "integer",
@@ -383,8 +383,101 @@
           }
         }
       }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional native checkpoint participant. Absence preserves ordinary finite startup.",
+      "required": [
+        "service_id",
+        "software_id",
+        "config_id",
+        "run_directory",
+        "request_subject",
+        "response_subject",
+        "state_schema",
+        "state_version",
+        "dt_us",
+        "max_count",
+        "max_bytes",
+        "max_snapshot_bytes",
+        "max_completed_operations"
+      ],
+      "properties": {
+        "service_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable checkpoint participant identity, distinct from ASB service admission.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+        },
+        "software_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact compatible native binary/library/toolchain identity supplied by orchestration."
+        },
+        "config_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact compatible deployment/configuration identity supplied by orchestration."
+        },
+        "run_directory": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Service-owned durable checkpoint directory; relative to this runtime config."
+        },
+        "request_subject": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Existing simulation-only ServiceCheckpointRequest subject.",
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$"
+        },
+        "response_subject": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Existing simulation-only ServiceCheckpointResponse subject.",
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$"
+        },
+        "state_schema": {
+          "const": "flight-models.runtime-checkpoint",
+          "description": "Native domain payload format identity."
+        },
+        "state_version": {
+          "const": "1",
+          "description": "Persisted payload format version, independent of development phases."
+        },
+        "dt_us": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807,
+          "description": "Positive fixed authoritative integration interval, simulation microseconds."
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807,
+          "description": "Maximum complete local checkpoint bundles; no implicit eviction."
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807,
+          "description": "Maximum complete manifest and payload bytes in the owned store."
+        },
+        "max_snapshot_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807,
+          "description": "Maximum logical manifest plus payload bytes in one capture."
+        },
+        "max_completed_operations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807,
+          "description": "Maximum retained completed checkpoint operation identities."
+        }
+      }
     }
   },
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "Fresh-run runtime deployment contract. No restore, live route admission or implicit endpoints. Physical state is ECEF internally; input geodetic angles are radians and altitude is WGS-84 HAE."
+  "description": "Runtime deployment contract with optional fenced checkpoint recovery. No live route admission or implicit endpoints. Physical state is ECEF internally; input geodetic angles are radians and altitude is WGS-84 HAE."
 }

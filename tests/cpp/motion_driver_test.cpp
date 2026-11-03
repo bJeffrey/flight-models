@@ -349,6 +349,62 @@ void partition_agreement(const MotionProfile& profile, DriverLimits limits) {
        "interval partitioning changed motion beyond fixture tolerance");
 }
 
+void continuation_checkpoint(const MotionProfile& profile, DriverLimits limits) {
+  StateStore source(1, 1);
+  const auto source_entity = spawn(source, "continued-command");
+  const std::vector<TimedDesiredMotion> commands = {
+      {0, 1, {0.8, 100, 1000}}, {500000000, 2, {1.2, 105, 1010}}};
+  MotionDriver original(source, 0, profile, limits, {{source_entity, true, {}, commands}});
+  const auto fresh_checkpoint = original.checkpoint();
+
+  StateStore fresh_target(1, 1);
+  const auto fresh_entity = spawn(fresh_target, "continued-command");
+  MotionDriver fresh_restored(fresh_target, 0, profile, limits, {{fresh_entity, true, {}, commands}});
+  fresh_restored.restore(fresh_checkpoint);
+  original.advance_to(0);
+  fresh_restored.advance_to(0);
+  require(original.samples().size() == fresh_restored.samples().size() &&
+          original.samples()[0].desired.heading_rad == fresh_restored.samples()[0].desired.heading_rad,
+          "fresh checkpoint did not apply the time-zero command after restore");
+
+  const auto running_checkpoint = original.checkpoint();
+  StateStore resumed_store(1, 1);
+  const auto resumed_entity = spawn(resumed_store, "continued-command");
+  MotionDriver resumed(resumed_store, 0, profile, limits, {{resumed_entity, true, {}, commands}});
+  resumed.restore(running_checkpoint);
+  original.advance_to(700000000);
+  resumed.advance_to(700000000);
+  PhysicalState original_state;
+  PhysicalState resumed_state;
+  DesiredMotion original_desired;
+  DesiredMotion resumed_desired;
+  source.read_state(source_entity, original_state, original_desired);
+  resumed_store.read_state(resumed_entity, resumed_state, resumed_desired);
+  require(distance(original_state.position_ecef_m, resumed_state.position_ecef_m) == 0 &&
+          original_state.source_time_ns == resumed_state.source_time_ns &&
+          original_desired.heading_rad == resumed_desired.heading_rad &&
+          original_desired.horizontal_speed_mps == resumed_desired.horizontal_speed_mps &&
+          original_desired.altitude_hae_m == resumed_desired.altitude_hae_m,
+          "restored command cursor diverged from uninterrupted motion");
+
+  StateStore route_source(1, 1);
+  const auto route_entity = spawn(route_source, "continued-route");
+  const std::vector<Waypoint> route = {east(0), east(1000), east(2000)};
+  MotionDriver route_driver(route_source, 0, profile, limits, {{route_entity, false, route, {}}});
+  route_driver.advance_to(0);
+  const auto route_checkpoint = route_driver.checkpoint();
+  StateStore route_target(1, 1);
+  const auto target_entity = spawn(route_target, "continued-route");
+  MotionDriver restored_route(route_target, 0, profile, limits, {{target_entity, false, route, {}}});
+  restored_route.restore(route_checkpoint);
+  route_driver.advance_to(second);
+  restored_route.advance_to(second);
+  require(route_driver.waypoint_progress(route_entity) == restored_route.waypoint_progress(target_entity) &&
+          distance(read(route_source, route_entity).position_ecef_m,
+                   read(route_target, target_entity).position_ecef_m) == 0,
+          "restored waypoint progress diverged from uninterrupted route");
+}
+
 template <typename Function>
 bool run_case(const char* name, Function test, const MotionProfile& profile, DriverLimits limits) {
   try { test(profile, limits); return true; }
@@ -375,6 +431,7 @@ int main(int argc, char** argv) {
     failures += !run_case("whole-interval step budget", interval_wide_step_budget, profile, limits);
     failures += !run_case("admission and lifecycle", admission_and_lifecycle, profile, limits);
     failures += !run_case("interval partition", partition_agreement, profile, limits);
+    failures += !run_case("continuation checkpoint", continuation_checkpoint, profile, limits);
     failures += !run_case("zero-time initialization", zero_time_cascade_and_failed_initialization, profile, limits);
     failures += !run_case("initial validation and warmed work", invalid_initial_state_and_warmed_work, profile, limits);
     if (failures != 0) return 1;

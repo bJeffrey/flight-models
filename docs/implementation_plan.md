@@ -1223,3 +1223,154 @@ This completes the requested navigation-error addition, not SuperCell retirement
 Exact next development step remains actual sensor-models truth/navigation and
 clock consumption; communications, operational control/emitter and workload
 acceptance gates remain in their owning sequence. New rewind/restore stays deferred.
+
+
+### Live restore continuation foundation (2026-11-02)
+
+The user explicitly includes live scenario rewind/restore in the supported
+simulation-control GUI. This supersedes the earlier sequencing deferral above.
+The [ai-bm-sim operator-workflow sequence](../../ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#supported-operator-gui-and-live-restore-2026-11-02)
+owns deployment/control integration; ECO-STATE-1 and ECO-FM-RETIRE-1 remain the
+cross-repository gates.
+
+First bounded implementation: expose owning continuation capture in `MotionDriver`
+and `Runtime`. Retain canonical ECEF physical/desired state, event boundary and
+initialization state, and command/waypoint progress. Rebuild handle mappings and
+scratch storage from admitted immutable inputs. Restore into a fresh candidate;
+validate complete membership, progression and configuration compatibility before
+replacing the active runtime. No transport, clock or epoch changes belong in
+this core API. Current navigation noise is identity/time keyed, so it has no
+mutable engine state; preserve its seed/configuration and scenario UTC origin.
+
+This initial API is in-memory only. Durable payload encoding, participant binding,
+consistent-cut coordination and ecosystem restore remain subsequent work. Do not
+advertise this local foundation as a GUI live-seek implementation. Acceptance
+requires future DIS/PRD continuation equality, including nonzero navigation error,
+and rejected incompatible/incomplete captures leaving live continuation intact.
+
+
+Continuation foundation acceptance: `MotionDriver::checkpoint/restore` and
+`Runtime::checkpoint/restore` now capture owning rows/progress and enforce exact
+admitted profile/configuration compatibility. The runtime constructs and validates
+a candidate, then swaps it into place without publishing outputs. Restore uses
+the frozen typed profile even if its file changes or disappears. Driver restore
+reuses zero-duration motion validation for envelope and attitude coherence;
+physical values are not reintegrated or converted into a different canonical
+representation. Per-advance substep counters and output buffers are scratch and
+are not continuation state.
+
+Changed paths: `include/flight_models/{motion_driver,motion_profile,runtime}.h`,
+`src/{motion_driver,motion_profile,runtime}.cpp`, and existing driver/runtime tests.
+Focused Release/Werror Docker build and **2/2 CTest executables pass**, covering
+noisy future DIS/PRD output equality, fresh time-zero commands, running command
+and waypoint continuation, missing rows, inconsistent times, profile-file
+changes, out-of-envelope desired speed and invalid attitude rejection. Independent
+review identified and drove the compatibility, initialization and validation fixes.
+Evidence: [build/test log](../logs/20261102/runtime-continuation/build-test.log).
+
+Exact next step: define the durable service-owned payload codec and bind this API
+to the existing checkpoint participant protocol, including software/config identity
+and processed-through/input cursors. This API is process-local only; sensors,
+comms and AST still need full continuation hooks before coordinated live restore
+and GUI acceptance can be claimed. No full-ecosystem validation was run here.
+
+
+### Durable runtime payload and prepared candidate (2026-11-02)
+
+`Runtime::encode_checkpoint()` now emits UTF-8 JSON with format identifier
+`flight-models.runtime-checkpoint` and integer format version 1. This version is
+a persisted schema identifier, not a selectable development phase. The payload
+contains the original runtime configuration, all admitted motion/navigation
+profile values, driver initialization and elapsed nanoseconds, and stable-ID rows
+with ECEF position/velocity/acceleration, body attitude/angular velocity, desired
+motion and command/waypoint cursors. Integers remain integer tokens and doubles
+round-trip at their native precision; no coordinate conversion is added.
+
+`Runtime::prepare_restore(payload)` validates format, types, shapes, ranges,
+cohort size and exact configuration/profile compatibility, builds a fresh
+candidate from the already-admitted profile, and reuses driver restore validation.
+It regenerates the candidate's opaque in-memory program metadata rather than
+serializing pointers. The returned runtime is uninstalled; the caller installs
+it with the existing noexcept move assignment only while fenced. Preparation
+publishes nothing and leaves the live runtime unchanged. Captured-boundary output
+buffers are excluded, so restore does not re-emit that boundary.
+
+Compatibility remains limited to matching software/toolchain and configuration;
+the participant envelope must enforce software identity as well as payload
+integrity. This codec performs no file I/O and does not provide storage, epoch
+allocation, input-cursor replay or a distributed cut. The current Runtime still
+rejects route/command configuration; its generic driver's separate continuation
+API does not imply live route-command ingestion has been implemented.
+
+Changed paths: `include/flight_models/runtime.h`, its explicit friendship in
+`motion_driver.h`, `src/runtime.cpp`, and `tests/cpp/runtime_test.cpp`.
+Validation: focused Release/Werror Docker build and **2/2 CTest executables pass**.
+Coverage includes continuation after the source object is destroyed, exact noisy
+future DIS/PRD outputs after installation, unchanged live state during preparation,
+truncated/unsupported/incompatible payloads, invalid array shape, floating-point
+nanoseconds and nonnumeric state fields. Restore after profile-file removal
+preserves future outputs and emits no captured-boundary duplicates. Independent
+codec/interface review found no material blocker. Evidence:
+[build/test log](../logs/20261102/runtime-checkpoint-codec/build-test.log).
+
+Exact next step: implement the first C++ participant in checkpoint-runtime using
+its existing manifest and phase semantics, then bind this codec in the native
+flight-models process. The shared-library [native participant dependency](../../checkpoint-runtime/docs/implementation_plan.md#first-native-participant-dependency-2026-11-02)
+records the clock restore-bootstrap, publication-cut and input-cursor gaps found
+while defining that binding. No native participant transport, live GUI seek or
+full-ecosystem restore is accepted by this codec checkpoint.
+
+
+Native dependency update (2026-11-02): checkpoint-runtime's
+[native fenced participant foundation](../../checkpoint-runtime/docs/implementation_plan.md#native-fenced-participant-foundation-2026-11-02)
+now accepts opaque storage, phase/fault tests and Python/C++ bundle/session
+interoperability. Next is the flight-models StateOwner/process binding and shared
+clock restored-boundary bootstrap. Native retirement, nonblocking capture and
+input-cursor replay remain unsupported; no flight-models process capture/restore
+or GUI live seek was exercised by the shared-library checks.
+
+
+### Native process checkpoint and restored clock boundary (2026-11-02)
+
+The optional `checkpoint` deployment profile now binds the durable Runtime codec
+and prepared candidate to checkpoint-runtime's native StateOwner/participant.
+The process serializes clock/control events through one bounded NATS inbox,
+flushes pending PRDs to ASB admission before a fence, and holds initial outputs
+until authoritative time zero. A prior durable session requires explicit recovery
+before fresh truth can be published. APPLY installs state without publication;
+the exact paused target-epoch tick-zero announcement restores the shared
+SimulationClock before RELEASE. Ordinary services still use simulation time
+without inspecting the rate; network deadlines remain wall/monotonic time.
+
+Changed paths: `checkpoint_state_owner.{h,cpp}`, `checkpoint_process.{h,cpp}`,
+`runtime_transport.{h,cpp}`, `runtime_main.cpp`, process configuration/schema,
+CMake/Compose, focused owner/config tests and the existing real process smoke.
+The independently linkable ai-bm-sim runtime-support library adds
+`SimulationClock::restore_boundary()` with run/origin/range/newer-epoch checks.
+Checkpoint-runtime's CMake limits standalone tests to its own top-level build.
+
+Validation: `./test_process.sh logs/20261102/native-checkpoint-binding/process`
+passes **14/14 Release/Werror CTest checks** and the real NATS/two-ASB process
+smoke. The latter captures at 200 ms, restores into epoch 1, and recovers a cold
+restart into epoch 2. Future noisy PRDs and DIS match the reference exactly;
+stale old-epoch ticks are ignored and recovery publishes no fresh time-zero or
+captured-boundary duplicates. Premature requests, duplicate snapshot requests,
+and RELEASE before the new announcement are exercised. Focused independent
+review covered the process failure boundary and ordered transport lifetime.
+Evidence: [process validation](../logs/20261102/native-checkpoint-binding/process-validation.log),
+[CTest log](../logs/20261102/native-checkpoint-binding/process/build-test.log),
+and [accepted result](../logs/20261102/native-checkpoint-binding/process/checkpoint-result.json).
+
+Scope: this is an isolated finite-process binding, not distributed restore.
+Generated ecosystem startup does not yet emit the checkpoint profile. Test
+software/config identities are fixture labels; operational wiring must supply
+real compatibility identities. ASB admission is not a downstream processing cut.
+Native input-cursor replay, retirement and nonblocking capture remain unsupported.
+GUI live seek and ECO-STATE-1/ECO-FM-RETIRE-1 remain open.
+
+Exact next step: inventory and implement the selected sensor-models continuation
+adapter, preserving truth/navigation histories, scan schedules, pending work and
+noise lineage independently of delivery epoch. Then complete the other selected
+stateful participants before enabling coordinated topology/GUI restore. The
+ai-bm-sim runtime/replay plan owns that cross-service sequence and arbitrary-time
+recorded-input replay; do not substitute a clock jump for restoration.

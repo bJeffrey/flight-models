@@ -1,0 +1,15 @@
+{
+  "service_id": "flight-models",
+  "software_id": "native-process-test",
+  "config_id": "native-process-fixture",
+  "state_schema": "flight-models.runtime-checkpoint",
+  "state_version": "1",
+  "run_directory": "checkpoint-state",
+  "request_subject": "sim.checkpoint.request",
+  "response_subject": "sim.checkpoint.response",
+  "dt_us": 100000,
+  "max_count": 4,
+  "max_bytes": 1000000,
+  "max_snapshot_bytes": 1000000,
+  "max_completed_operations": 32
+}

@@ -52,7 +52,15 @@ Build with `./test.sh` first. The process validates
 [`config/runtime_policy.json`](config/runtime_policy.json) is a three-platform
 synthetic policy example; scenario identity/EGI/ASB bindings remain explicit
 ai-bm-sim inputs. The wrapper mounts the repository at `/src`, matching the
-example profile paths. Normal ecosystem startup still selects SuperCell.
+example profile paths. The accepted bounded ecosystem default uses flight-models/
+OpenDIS, with SuperCell retained as an explicit rollback backend.
+
+An optional `checkpoint` profile enables the native fenced participant; see the
+[test profile](tests/fixtures/checkpoint_profile.json) and
+[accepted process binding](docs/implementation_plan.md#native-process-checkpoint-and-restored-clock-boundary-2026-11-02).
+`./test_process.sh` also tests capture, restore and cold-restart recovery with
+nonzero navigation noise. Normal generated startup does not yet enable this
+profile; coordinated system restore and GUI live seek remain pending.
 
 The DIS adapter uses OpenDIS for serialization. Tests also feed its output through
 the existing sensor-models decoder; the Docker workflow mounts the sibling

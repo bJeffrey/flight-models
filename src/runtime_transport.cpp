@@ -57,6 +57,36 @@ Address parse_ws(const std::string& url) {
 void nats_check(natsStatus status, const std::string& where) {
   if (status != NATS_OK) throw std::runtime_error(where + ": " + natsStatus_GetText(status));
 }
+
+std::string ordered_event_subject(const std::string& clock, const std::string& request) {
+  // One bounded inbox preserves broker order across both exact subjects.
+  // Keep the subscription within their shared NATS token prefix.
+  std::size_t clock_start = 0;
+  std::size_t request_start = 0;
+  std::size_t prefix_end = 0;
+  while (clock_start < clock.size() && request_start < request.size()) {
+    const auto clock_end = clock.find('.', clock_start);
+    const auto request_end = request.find('.', request_start);
+    const auto clock_token_end = clock_end == std::string::npos ? clock.size() : clock_end;
+    const auto request_token_end = request_end == std::string::npos ? request.size() : request_end;
+    const auto clock_token = clock.substr(clock_start, clock_token_end - clock_start);
+    const auto request_token = request.substr(request_start, request_token_end - request_start);
+    if (clock_token != request_token) break;
+    prefix_end = clock_token_end;
+    if (clock_end == std::string::npos || request_end == std::string::npos) {
+      // A wildcard suffix must match at least one token after its dot.
+      if (clock_end != request_end) {
+        const auto previous_dot = clock.rfind('.', prefix_end);
+        prefix_end = previous_dot == std::string::npos ? 0 : previous_dot;
+      }
+      break;
+    }
+    clock_start = clock_end + 1;
+    request_start = request_end + 1;
+  }
+  if (prefix_end == 0) throw std::invalid_argument("runtime event subjects have no bounded common prefix");
+  return clock.substr(0, prefix_end) + ".>";
+}
 }  // namespace
 
 struct RuntimeTransport::Impl {
@@ -213,6 +243,14 @@ struct RuntimeTransport::Impl {
   explicit Impl(const Json& config) : work(asio::make_work_guard(io)) {
     const auto& t = config.at("transport");
     nats_url = required_string(t, "nats_url"); clock_subject = required_string(t, "clock_subject");
+    if (config.contains("checkpoint")) {
+      const auto& checkpoint = config.at("checkpoint");
+      checkpoint_request_subject = required_string(checkpoint, "request_subject");
+      checkpoint_response_subject = required_string(checkpoint, "response_subject");
+      if (checkpoint_request_subject == clock_subject)
+        throw std::invalid_argument("checkpoint request subject must differ from clock subject");
+      event_subject = ordered_event_subject(clock_subject, checkpoint_request_subject);
+    }
     host = required_string(t, "dis_host");
     const auto port = t.at("dis_port").get<int>();
     if (port <= 0 || port > 65535) throw std::invalid_argument("transport.dis_port out of range");
@@ -239,14 +277,14 @@ struct RuntimeTransport::Impl {
   }
   void signal() { std::lock_guard<std::mutex> lock(mutex); cv.notify_all(); }
   void check_failure() {
-    // Polling status avoids callback closures outliving this owner during NATS shutdown.
+    // Polling status avoids connection callbacks outliving this owner at shutdown.
     if (connection && natsConnection_Status(connection) != NATS_CONN_STATUS_CONNECTED)
-      fail("NATS clock connection is no longer connected");
+      fail("NATS runtime connection is no longer connected");
     if (subscription) {
       std::int64_t dropped = 0;
       const auto status = natsSubscription_GetDropped(subscription, &dropped);
-      if (status != NATS_OK) fail(std::string("read NATS clock drop count: ") + natsStatus_GetText(status));
-      else if (dropped > 0) fail("NATS clock pending limit dropped messages");
+      if (status != NATS_OK) fail(std::string("read NATS runtime drop count: ") + natsStatus_GetText(status));
+      else if (dropped > 0) fail("NATS runtime pending limit dropped messages");
     }
     std::lock_guard<std::mutex> lock(mutex);
     if (!failure.empty()) throw std::runtime_error(failure);
@@ -265,7 +303,8 @@ struct RuntimeTransport::Impl {
   std::thread thread;
   asio::ip::udp::socket udp{io};
   asio::ip::udp::endpoint dis_endpoint;
-  std::string nats_url, clock_subject, host, service;
+  std::string nats_url, clock_subject, checkpoint_request_subject, checkpoint_response_subject;
+  std::string event_subject, host, service;
   unsigned short dis_port{};
   std::chrono::milliseconds poll_timeout, op_timeout;
   std::size_t max_messages{}, max_bytes{};
@@ -313,17 +352,17 @@ void RuntimeTransport::open() {
     nats_check(natsOptions_SetURL(options, p.nats_url.c_str()), "set NATS URL");
     nats_check(natsOptions_SetTimeout(options, static_cast<int>(p.op_timeout.count())), "set NATS timeout");
     nats_check(natsOptions_SetMaxReconnect(options, 0), "disable NATS reconnect");
-    // No NATS callbacks retain Impl pointers; check_failure polls connection state.
     nats_check(natsConnection_Connect(&p.connection, options), "connect NATS " + p.nats_url);
-    nats_check(natsConnection_SubscribeSync(&p.subscription, p.connection, p.clock_subject.c_str()),
-               "subscribe NATS clock " + p.clock_subject);
     if (p.max_messages > INT_MAX || p.max_bytes > INT_MAX)
       throw std::invalid_argument("NATS pending limits exceed libnats integer range");
+    const std::string& subscription_subject = p.event_subject.empty() ? p.clock_subject : p.event_subject;
+    nats_check(natsConnection_SubscribeSync(&p.subscription, p.connection, subscription_subject.c_str()),
+               "subscribe NATS runtime events " + subscription_subject);
     nats_check(natsSubscription_SetPendingLimits(p.subscription, static_cast<int>(p.max_messages),
                static_cast<int>(std::min<std::size_t>(p.max_bytes, static_cast<std::size_t>(INT_MAX)))),
-               "set NATS clock pending limits");
+               "set NATS runtime pending limits");
     nats_check(natsConnection_FlushTimeout(p.connection, static_cast<int>(p.op_timeout.count())),
-               "flush NATS clock subscription " + p.clock_subject);
+               "flush NATS runtime subscription " + subscription_subject);
     asio::ip::udp::resolver udp_resolver(p.io);
     const auto udp_endpoints = udp_resolver.resolve(asio::ip::udp::v4(), p.host, std::to_string(p.dis_port));
     if (udp_endpoints.empty()) throw std::runtime_error("resolve DIS host " + p.host + ": no UDP endpoint");
@@ -355,20 +394,70 @@ void RuntimeTransport::open() {
   }
 }
 
-std::optional<std::vector<std::uint8_t>> RuntimeTransport::next_clock() {
+std::optional<RuntimeEvent> RuntimeTransport::next_event() {
   auto& p = *impl_; p.check_failure();
   if (!p.opened) throw std::logic_error("runtime transport is not open");
-  natsMsg* raw_message = nullptr;
-  const auto status = natsSubscription_NextMsg(&raw_message, p.subscription, static_cast<int>(p.poll_timeout.count()));
-  if (status == NATS_TIMEOUT) { p.check_failure(); return std::nullopt; }
-  nats_check(status, "receive NATS clock " + p.clock_subject);
-  const std::unique_ptr<natsMsg, decltype(&natsMsg_Destroy)> message(raw_message, &natsMsg_Destroy);
-  const int length = natsMsg_GetDataLength(message.get());
-  const auto* data = natsMsg_GetData(message.get());
-  std::vector<std::uint8_t> bytes;
-  if (length > 0) bytes.assign(data, data + length);
+  const auto deadline = std::chrono::steady_clock::now() + p.poll_timeout;
+  while (true) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      p.check_failure();
+      return std::nullopt;
+    }
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    if (remaining.count() <= 0) {
+      p.check_failure();
+      return std::nullopt;
+    }
+    const auto timeout_ms = static_cast<int>(remaining.count());
+    natsMsg* raw_message = nullptr;
+    const auto status = natsSubscription_NextMsg(&raw_message, p.subscription,
+                                                  timeout_ms);
+    if (status == NATS_TIMEOUT) { p.check_failure(); return std::nullopt; }
+    nats_check(status, "receive NATS runtime event");
+    const std::unique_ptr<natsMsg, decltype(&natsMsg_Destroy)> message(raw_message, &natsMsg_Destroy);
+    const std::string subject = natsMsg_GetSubject(message.get());
+    RuntimeEventKind kind;
+    if (subject == p.clock_subject) kind = RuntimeEventKind::clock;
+    else if (!p.checkpoint_request_subject.empty() && subject == p.checkpoint_request_subject)
+      kind = RuntimeEventKind::checkpoint_request;
+    else {
+      // The prefix subscription may admit unrelated subjects. Discard them
+      // before copying data, while keeping the original poll deadline fixed.
+      p.check_failure();
+      continue;
+    }
+    const int length = natsMsg_GetDataLength(message.get());
+    const auto* data = natsMsg_GetData(message.get());
+    RuntimeEvent event{kind, {}};
+    if (length > 0) event.payload.assign(data, data + length);
+    p.check_failure();
+    return event;
+  }
+}
+
+std::optional<std::vector<std::uint8_t>> RuntimeTransport::next_clock() {
+  auto event = next_event();
+  if (!event) return std::nullopt;
+  if (event->kind != RuntimeEventKind::clock)
+    throw std::runtime_error("checkpoint request received by clock-only runtime caller");
+  return std::move(event->payload);
+}
+
+void RuntimeTransport::publish_checkpoint_response(const std::vector<std::uint8_t>& payload) {
+  auto& p = *impl_;
   p.check_failure();
-  return bytes;
+  if (!p.opened) throw std::logic_error("runtime transport is not open");
+  if (p.checkpoint_response_subject.empty())
+    throw std::logic_error("checkpoint response transport is not configured");
+  if (payload.size() > static_cast<std::size_t>(INT_MAX))
+    throw std::length_error("checkpoint response exceeds libnats payload range");
+  nats_check(natsConnection_Publish(p.connection, p.checkpoint_response_subject.c_str(),
+             payload.data(), static_cast<int>(payload.size())),
+             "publish NATS checkpoint response " + p.checkpoint_response_subject);
+  nats_check(natsConnection_FlushTimeout(p.connection, static_cast<int>(p.op_timeout.count())),
+             "flush NATS checkpoint response " + p.checkpoint_response_subject);
+  p.check_failure();
 }
 
 void RuntimeTransport::publish(const std::vector<RuntimeOutput>& outputs) {

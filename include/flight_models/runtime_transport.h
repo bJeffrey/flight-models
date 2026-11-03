@@ -12,7 +12,16 @@
 
 namespace flight_models {
 
-/** Owns the process boundary for the fresh-run runtime.
+/** Kinds of ordered events admitted from the simulation bus. */
+enum class RuntimeEventKind { clock, checkpoint_request };
+
+/** Original payload for one clock or checkpoint request bus event. */
+struct RuntimeEvent {
+  RuntimeEventKind kind;             ///< Event kind selected by exact subject match.
+  std::vector<std::uint8_t> payload; ///< Original NATS payload bytes.
+};
+
+/** Owns the runtime process transport boundary.
  * DIS datagrams preserve the encoded PDU bytes and configured host/port.
  * PRD JSON is published to its configured entity topic; entity identity remains
  * in configuration and is not inserted into the report payload. Clock payloads
@@ -30,15 +39,32 @@ class RuntimeTransport {
 
   /** Connect transports, complete OWP INIT and start continuous error readers.
    * NATS subscription registration is flushed before readiness. No automatic
-   * reconnect or replay is attempted after a failure; restoration is a later gate.
+   * reconnect or replay is attempted after a failure. The optional checkpoint
+   * process binding performs explicit coordinated recovery.
    * @throws std::runtime_error for connection, startup or deadline failures.
    */
   void open();
-  /** Poll unchanged protobuf bytes; empty means the configured poll timed out.
+  /** Poll one clock or checkpoint request in bus delivery order.
+   * One bounded NATS subscription inbox preserves the order of both subjects;
+   * unrelated messages under their shared prefix are discarded before payload
+   * copying. Empty means the configured wall poll timed out. Inbox overflow,
+   * connection loss, dropped subscription messages and publication errors fail
+   * the transport rather than silently losing control events.
+   */
+  std::optional<RuntimeEvent> next_event();
+  /** Poll unchanged clock protobuf bytes for clock-only callers.
+   * Empty means the configured poll timed out. Throws if a checkpoint request
+   * is received, because discarding it would break event ordering and handling.
    * Connection loss, dropped clock messages and background publication errors
    * throw std::runtime_error, including while the clock is idle.
    */
   std::optional<std::vector<std::uint8_t>> next_clock();
+  /** Publish a checkpoint response and wait for NATS to flush it.
+   * @param payload Opaque response bytes for the configured checkpoint subject.
+   * @throws std::logic_error if checkpoint transport is not configured.
+   * @throws std::runtime_error for publication or flush failure.
+   */
+  void publish_checkpoint_response(const std::vector<std::uint8_t>& payload);
   /** Send outputs through per-entity DIS or PRD adapters.
    * PRD pending message and byte limits apply across all configured ASB peers;
    * capacity is reserved before posting payloads to the IO thread. Writes are

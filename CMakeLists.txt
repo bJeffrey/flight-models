@@ -50,6 +50,16 @@ target_compile_options(flight_models_runtime PRIVATE -Wall -Wextra -Wpedantic -W
 target_include_directories(flight_models_runtime PUBLIC include)
 target_link_libraries(flight_models_runtime PUBLIC flight_models_motion flight_models_dis flight_models_navigation)
 
+# Service-owned checkpoint hooks depend on the shared mechanics, never the reverse.
+set(CHECKPOINT_RUNTIME_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../checkpoint-runtime" CACHE PATH
+    "Shared native checkpoint mechanics repository")
+add_subdirectory("${CHECKPOINT_RUNTIME_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/checkpoint-runtime" EXCLUDE_FROM_ALL)
+add_library(flight_models_checkpoint src/checkpoint_state_owner.cpp)
+target_compile_features(flight_models_checkpoint PUBLIC cxx_std_17)
+target_compile_options(flight_models_checkpoint PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(flight_models_checkpoint PUBLIC include)
+target_link_libraries(flight_models_checkpoint PUBLIC flight_models_runtime CheckpointRuntime::checkpoint_runtime)
+
 # Domain libraries remain free of protobuf, NATS, WebSocket and process lifecycle.
 set(_runtime_support_default "${CMAKE_CURRENT_SOURCE_DIR}/../ai-bm-sim/libraries/runtime-support")
 if(DEFINED ENV{RUNTIME_SUPPORT_SOURCE_DIR})
@@ -63,11 +73,15 @@ find_package(Boost REQUIRED COMPONENTS system)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(NATS REQUIRED IMPORTED_TARGET libnats)
-add_library(flight_models_process src/process_config.cpp src/runtime_transport.cpp)
+find_package(Protobuf REQUIRED)
+protobuf_generate_cpp(FLIGHT_CONTROL_SOURCES FLIGHT_CONTROL_HEADERS
+    "${RUNTIME_SUPPORT_SCHEMA_DIR}/runtime_control.proto")
+add_library(flight_models_process src/process_config.cpp src/runtime_transport.cpp
+    src/checkpoint_process.cpp ${FLIGHT_CONTROL_SOURCES})
 target_compile_features(flight_models_process PUBLIC cxx_std_17)
 target_compile_options(flight_models_process PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_include_directories(flight_models_process PUBLIC include PRIVATE ${VALIJSON_INCLUDE_DIR})
-target_link_libraries(flight_models_process PUBLIC flight_models_runtime RuntimeSupport::sim_time
+target_include_directories(flight_models_process PUBLIC include "${CMAKE_CURRENT_BINARY_DIR}" PRIVATE ${VALIJSON_INCLUDE_DIR})
+target_link_libraries(flight_models_process PUBLIC flight_models_checkpoint RuntimeSupport::sim_time
     Boost::system Threads::Threads PkgConfig::NATS)
 add_executable(flight-models-run src/runtime_main.cpp)
 target_compile_options(flight-models-run PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -84,10 +98,18 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(checkpoint-state-owner-test tests/cpp/checkpoint_state_owner_test.cpp)
+  target_compile_options(checkpoint-state-owner-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(checkpoint-state-owner-test PRIVATE flight_models_checkpoint)
+  add_test(NAME checkpoint-state-owner-test COMMAND checkpoint-state-owner-test ${CMAKE_SOURCE_DIR})
   add_executable(flight-clock-test tests/cpp/clock_admission_test.cpp)
   target_compile_options(flight-clock-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries(flight-clock-test PRIVATE flight_models_process)
   add_test(NAME flight-clock-test COMMAND flight-clock-test)
+  add_executable(shared-clock-restore-test "${RUNTIME_SUPPORT_SOURCE_DIR}/tests/simulation_clock_test.cpp")
+  target_compile_options(shared-clock-restore-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(shared-clock-restore-test PRIVATE RuntimeSupport::sim_time RuntimeSupport::uci_headers)
+  add_test(NAME shared-clock-restore-test COMMAND shared-clock-restore-test)
   add_executable(flight-process-config-test tests/cpp/process_config_test.cpp)
   target_compile_options(flight-process-config-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries(flight-process-config-test PRIVATE flight_models_process)
