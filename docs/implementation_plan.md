@@ -1122,15 +1122,18 @@ finding is resolved with an admission check/regression; its fixed-ground-row
 review found the envelope correction appropriately scoped. No material review
 issues remain.
 
-Exact next slice: wire the owning runtime service and generated configuration
+Historical next slice (completed by the later opt-in startup and bounded-default
+checkpoints): wire the owning runtime service and generated configuration
 into **ai-bm-sim's opt-in normal scenario startup**, with explicit per-platform
 ASB composition and authoritative clock startup ordering. Reconcile the legacy
 SuperCell dynamics-stage bridge without adding an ordinary flight tick-ACK
 barrier or running two truth producers for one identity. Then exercise actual
 sensor-models DIS/PRD consumption and comms-models interplatform delivery in a
 bounded system scenario. Operational control/route admission, emitter-source
-ownership/carriers, nonideal navigation and performance/retirement gates remain
-open. SuperCell stays current/reference until that acceptance is complete.
+ownership/carriers, nonideal navigation and broad workload qualification remain
+separate follow-up work where they do not replace behavior used by the migration.
+Retirement scope is the motion/truth behavior currently supplied by SuperCell;
+do not infer acceptance of unrelated capabilities or global performance targets.
 
 ### Opt-in startup orchestration handoff (2026-10-25)
 
@@ -1141,10 +1144,15 @@ time-zero observation and finite DIS/local PRD acceptance. Docker startup now
 passes with 63 DIS datagrams, 11 PRDs per reporting platform, normal process exit
 and isolated cleanup; the owning checkpoint links the accepted artifacts and
 resolved observer-import issue. No flight-models source changed in this slice.
-The legacy default still uses SuperCell. Sensor/comms, operational control/emitter
-and performance retirement gates remain open. Exact next action: implement actual
-sensor-models truth/navigation and clock consumption. New rewind/restore work
-remains deferred.
+At this 2026-10-25 checkpoint, the legacy default still used SuperCell.
+Sensor/comms and actually-used motion/truth integration were the next migration
+work. Operational
+control/emitter features and broad performance qualification remain independent
+follow-up items unless a concrete used behavior depends on them. Exact next
+action: implement actual sensor-models truth/navigation and clock consumption.
+Later 2026-11-02 bounded-default acceptance supersedes that next action for the
+four-sensor/one-AST 1x workflow. GUI rewind/restore remains independent follow-up
+work.
 
 Shared clock adoption checkpoint (2026-10-25): runtime_main now uses
 `RuntimeSupport::sim_time` from ai-bm-sim's independently buildable library.
@@ -1220,9 +1228,11 @@ The selected startup/policy inputs are under
 entrypoint and `--flight-models-profile` pointing to its `startup_profile.json`.
 
 This completes the requested navigation-error addition, not SuperCell retirement.
-Exact next development step remains actual sensor-models truth/navigation and
-clock consumption; communications, operational control/emitter and workload
-acceptance gates remain in their owning sequence. New rewind/restore stays deferred.
+At this 2026-10-25 checkpoint, the next development step was sensor-models
+truth/navigation and clock consumption, with communications and workload work in
+the owning sequence. The later 2026-11-02 bounded-default acceptance supersedes
+that migration status for the four-sensor/one-AST 1x workflow. GUI rewind/restore
+remains independent follow-up work.
 
 
 ### Live restore continuation foundation (2026-11-02)
@@ -1365,12 +1375,15 @@ Scope: this is an isolated finite-process binding, not distributed restore.
 Generated ecosystem startup does not yet emit the checkpoint profile. Test
 software/config identities are fixture labels; operational wiring must supply
 real compatibility identities. ASB admission is not a downstream processing cut.
-Native input-cursor replay, retirement and nonblocking capture remain unsupported.
-GUI live seek and ECO-STATE-1/ECO-FM-RETIRE-1 remain open.
+Native input-cursor replay, retirement coordination and nonblocking capture remain
+unsupported. These are independent restore follow-up limitations; GUI live
+seek/checkpoint/recovery/playback is not a gate for replacing the motion/truth
+behavior currently supplied by SuperCell. Do not claim global target capability
+or broad performance qualification from this bounded migration evidence.
 
-Exact next step: inventory and implement the selected sensor-models continuation
-adapter, preserving truth/navigation histories, scan schedules, pending work and
-noise lineage independently of delivery epoch. Then complete the other selected
-stateful participants before enabling coordinated topology/GUI restore. The
-ai-bm-sim runtime/replay plan owns that cross-service sequence and arbitrary-time
-recorded-input replay; do not substitute a clock jump for restoration.
+The four-sensor/one-AST 1x motion/truth workflow has no further flight-models
+migration step identified here. Cross-repository acceptance and any future scope
+are tracked in the ai-bm-sim master plan. Separately, the ai-bm-sim runtime/replay
+plan owns coordinated topology/GUI restore, continuation of other stateful
+participants, and arbitrary-time recorded-input replay; a clock jump is not
+restoration. Keep that sequence as nonblocking follow-up.
