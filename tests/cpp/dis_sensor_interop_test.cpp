@@ -20,7 +20,7 @@ void require(bool condition, const char* message) {
 std::vector<std::uint8_t> read_hex(const char* path) {
   std::ifstream input(path);
   std::string hex;
-  require(static_cast<bool>(input >> hex), "could not read SuperCell fixture");
+  require(static_cast<bool>(input >> hex), "could not read EntityState fixture");
   require(hex.size() % 2 == 0, "fixture must contain complete bytes");
   std::vector<std::uint8_t> bytes;
   for (std::size_t offset = 0; offset < hex.size(); offset += 2) {
@@ -38,7 +38,7 @@ void near_vector(const math::Vector3& actual, const math::Vector3& expected,
 }  // namespace
 
 int main(int argc, char** argv) {
-  require(argc == 2, "expected SuperCell fixture path");
+  require(argc == 2, "expected EntityState fixture path");
   const auto reference = sensor_models::dis::decode_entity_state_pdu(read_hex(argv[1]));
   const flight_models::DisEntityMetadata metadata{
       reference.identity.exercise, reference.identity.site,

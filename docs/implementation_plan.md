@@ -4,10 +4,11 @@
 
 Replace SuperCell in the active ecosystem with a focused `flight-models` runtime.
 Preserve the current tabular MARL policy and existing operational interfaces.
-SuperCell remains a selectable migration/reference backend until replacement
-acceptance; do not remove it or start two publishers for the same platform.
-The initial repository contained planning documentation only. The first contract
-slice below adds test-only C++ validation; no runtime is implemented.
+The used four-sensor/one-AST 1x workflow is accepted. On 2026-11-07 the
+SuperCell backend/configuration is removed; the local
+`last-supercell-supported-2026-11-07` tag retains the prior baseline. Never run
+two authoritative publishers for one platform. The dated slices below record
+the implementation history, not current runtime absence.
 
 The ecosystem master plan owns cross-repository gates. This document owns only
 flight-models implementation and local acceptance. Follow the workspace
@@ -1387,3 +1388,11 @@ are tracked in the ai-bm-sim master plan. Separately, the ai-bm-sim runtime/repl
 plan owns coordinated topology/GUI restore, continuation of other stateful
 participants, and arbitrary-time recorded-input replay; a clock jump is not
 restoration. Keep that sequence as nonblocking follow-up.
+
+### Retired backend fixture dependency removal (2026-11-07)
+
+The DIS receiving-code interoperability test uses the unchanged static
+`sensor-models/tests/fixtures/entity_state_v7.hex` fixture. Its captured bytes
+retain historical codec provenance, but no SuperCell checkout, process or
+configuration is needed. The targeted Docker build and `dis-sensor-interop-test`
+pass; evidence is `logs/20261107/supercell-removal/interop.log`.

@@ -151,7 +151,7 @@ if(BUILD_TESTING)
   target_include_directories(dis-sensor-interop-test PRIVATE "${FLIGHT_SENSOR_SOURCE_DIR}/include")
   target_link_libraries(dis-sensor-interop-test PRIVATE flight_models_dis)
   add_test(NAME dis-sensor-interop-test COMMAND dis-sensor-interop-test
-      "${FLIGHT_SENSOR_SOURCE_DIR}/tests/fixtures/supercell_entity_state_v7.hex")
+      "${FLIGHT_SENSOR_SOURCE_DIR}/tests/fixtures/entity_state_v7.hex")
   find_package(Boost REQUIRED COMPONENTS system)
   add_executable(flight-contract-test tests/cpp/contract_test.cpp)
   target_compile_features(flight-contract-test PRIVATE cxx_std_17)
