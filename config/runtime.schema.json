@@ -9,7 +9,6 @@
     "scenario_epoch_unix_ns",
     "scenario_epoch_utc",
     "run_id",
-    "end_time_ns",
     "transport",
     "entities"
   ],
@@ -88,12 +87,6 @@
       "type": "string",
       "minLength": 1,
       "description": "Expected authoritative clock run ID."
-    },
-    "end_time_ns": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 9223372036854775807,
-      "description": "Elapsed scenario end, ns; final tick may be clipped to this boundary."
     },
     "transport": {
       "type": "object",

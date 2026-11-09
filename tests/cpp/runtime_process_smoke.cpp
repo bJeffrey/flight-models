@@ -67,6 +67,9 @@ struct Child {
     }
     throw std::runtime_error("child did not exit before its configured operation deadline");
   }
+  void request_stop() {
+    if (pid > 0) require(kill(pid, SIGTERM) == 0, "cannot signal flight process to stop");
+  }
   void stop() {
     if (pid <= 0) return;
     kill(pid, SIGTERM);
@@ -189,7 +192,7 @@ int main(int argc, char** argv) {
         if (!item.prd.is_null()) expected_prds.push_back(item.prd.dump());
     };
     collect(0, 0); collect(100000000, 100000000); collect(200000000, 200000000);
-    collect(400000000, 450000000);
+    collect(450000000, 450000000);
     require(expected_prds.size() == 6, "fixture did not produce six reference PRDs");
 
     IoRunner io_runner;
@@ -224,7 +227,7 @@ int main(int argc, char** argv) {
     publish_tick(nc.connection, run, 2, 200000, 100000, true, false);
     publish_tick(nc.connection, run, 2, 200000, 100000, true, false); // replay is ignored
     publish_tick(nc.connection, run, 2, 200000, 0, false, true); // paused heartbeat retains the last tick
-    publish_tick(nc.connection, run, 3, 450000, 250000, true, false); // clipped at configured 400 ms
+    publish_tick(nc.connection, run, 3, 450000, 250000, true, false); // processed beyond the former fixture endpoint
 
     std::size_t datagrams = 0;
     std::array<std::size_t, 3> entity_counts{};
@@ -286,9 +289,11 @@ int main(int argc, char** argv) {
                   "2026-10-24T00:00:00.400000000Z",
               "final PRD validity timestamp must remain clipped at 400 ms");
     }
+    // The clock does not send a global-duration field; the harness owns shutdown.
+    child.request_stop();
     const auto process_status = child.wait_for_exit(operation_timeout + 2s);
     require(WIFEXITED(process_status) && WEXITSTATUS(process_status) == 0,
-            "normal flight process did not exit successfully after the final tick");
+            "flight process did not exit successfully after the harness stop signal");
     require(read_log(log).find("flight-models stopped dis=15 prd=6") != std::string::npos,
             "process output counts differ from expected 15 DIS / 6 PRD");
     a->stop(); b->stop();
@@ -432,8 +437,10 @@ int main(int argc, char** argv) {
       }
       require(checkpoint_a->expect("contract.prd", "", false, 100) &&
               checkpoint_b->expect("contract.prd", "", false, 100), "unexpected checkpoint PRD publication");
+      child.request_stop();
       const auto status = child.wait_for_exit(operation_timeout + 2s);
-      require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "checkpoint process did not exit normally");
+      require(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+              "checkpoint process did not exit after the harness stop signal");
       const std::string count_line = "flight-models stopped dis=" + std::to_string(physical.size()) +
           " prd=" + std::to_string(navigation.size());
       require(read_log(process_log).find(count_line) != std::string::npos,

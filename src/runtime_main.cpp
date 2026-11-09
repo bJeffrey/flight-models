@@ -4,7 +4,6 @@
 #include "flight_models/runtime.h"
 #include "flight_models/runtime_transport.h"
 #include "runtime_support/simulation_clock.hpp"
-#include <algorithm>
 #include <csignal>
 #include <iostream>
 #include <limits>
@@ -38,7 +37,6 @@ int main(int argc, char** argv) {
     transport.open();
     std::cout << "flight-models ready run=" << config.at("run_id").get<std::string>() << std::endl;
 
-    const auto end_ns = config.at("end_time_ns").get<std::int64_t>();
     bool initialized = false;
     std::size_t dis_count = 0, prd_count = 0;
     while (!stopping) {
@@ -52,18 +50,15 @@ int main(int argc, char** argv) {
       const auto announced_ns = clock.accept(tick);
       if (!announced_ns) continue;
 
-      // No wall-clock/FTRT pacing enters the domain. On an overshooting final
-      // interval, stop physical integration at the scenario end and retain the
-      // announced creation time in the output header.
-      const auto processed_ns = std::min(*announced_ns, end_ns);
-      auto outputs = initialized ? runtime.advance_to(processed_ns, *announced_ns) : std::move(initial);
+      // Each accepted clock boundary is processed in full; global run duration
+      // belongs to the clock authority that announces these boundaries.
+      auto outputs = initialized ? runtime.advance_to(*announced_ns) : std::move(initial);
       initialized = true;
       transport.publish(outputs);
       for (const auto& output : outputs) {
         if (output.kind == flight_models::SampleKind::physical) ++dis_count;
         else ++prd_count;
       }
-      if (processed_ns == end_ns) break;
     }
     // Drain already-running publication on pause/termination; no future clock
     // interval is admitted after the stop request. No tick ACK protocol is added.

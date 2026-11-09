@@ -60,16 +60,13 @@ Json load_process_config(const std::string& path, const std::string& schema_path
     throw std::invalid_argument("runtime configuration violates schema: " + path);
   }
 
-  // JSON Schema numeric comparisons may round large integers. Keep time-domain
-  // checks exact, including epoch+duration at the last publication boundary.
+  // JSON Schema numeric comparisons may round large integers. Keep epoch checks
+  // exact because every announced elapsed time is added to this origin.
   const auto epoch = exact_int64(config.at("scenario_epoch_unix_ns"), "scenario epoch");
-  const auto end = exact_int64(config.at("end_time_ns"), "end time");
-  if (end <= 0) throw std::invalid_argument("scenario end time must be positive");
   const auto supplied_epoch = canonical_scenario_epoch(config.at("scenario_epoch_utc"));
   if (format_uci_simulation_time(epoch, 0) != supplied_epoch) {
     throw std::invalid_argument("scenario UTC text and integer origin disagree");
   }
-  (void)format_uci_simulation_time(epoch, end);
   (void)exact_int64(config.at("capacity"), "capacity");
   for (const auto& limit : config.at("limits")) (void)exact_int64(limit, "event limit");
   for (const auto* name : {"clock_poll_timeout_ms", "operation_timeout_ms", "pending_message_limit",
@@ -86,10 +83,6 @@ Json load_process_config(const std::string& path, const std::string& schema_path
       if (exact_int64(checkpoint.at(name), name) <= 0) {
         throw std::invalid_argument(std::string("checkpoint.") + name + " must be positive");
       }
-    }
-    const auto dt_us = exact_int64(checkpoint.at("dt_us"), "checkpoint.dt_us");
-    if (dt_us > std::numeric_limits<std::int64_t>::max() / 1000 || end % (dt_us * 1000) != 0) {
-      throw std::invalid_argument("checkpoint-enabled scenario end must align with its fixed simulation interval");
     }
     const auto clock_subject = config.at("transport").at("clock_subject").get<std::string>();
     const auto request_subject = checkpoint.at("request_subject").get<std::string>();

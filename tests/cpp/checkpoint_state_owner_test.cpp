@@ -183,10 +183,12 @@ void run(const std::filesystem::path& root) {
   submicro["driver"]["time_ns"] = 200'000'001;
   for (auto& row : submicro["driver"]["rows"]) row["physical"]["source_time_ns"] = 200'000'001;
   require_rejected_payload(owner, submicro.dump(), 1, "whole-microsecond");
-  auto beyond_end = encoded;
-  beyond_end["driver"]["time_ns"] = 400'001'000;
-  for (auto& row : beyond_end["driver"]["rows"]) row["physical"]["source_time_ns"] = 400'001'000;
-  require_rejected_payload(owner, beyond_end.dump(), 1, "end_time_ns");
+  auto beyond_old_endpoint = encoded;
+  beyond_old_endpoint["driver"]["time_ns"] = 400'001'000;
+  for (auto& row : beyond_old_endpoint["driver"]["rows"]) row["physical"]["source_time_ns"] = 400'001'000;
+  auto continued_candidate = owner.prepare_restore(beyond_old_endpoint.dump(), 1);
+  require(continued_candidate != nullptr,
+          "checkpoint continuation retained a scenario-duration cap");
   require(owner.current_t_us() == 400'000 && owner.current_timeline_epoch() == 0 &&
           published.size() == initial_batch_count + 4,
           "invalid restore candidates changed live time, epoch, or output publication");

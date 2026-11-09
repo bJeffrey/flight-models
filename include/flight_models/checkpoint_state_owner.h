@@ -21,11 +21,11 @@ namespace flight_models {
 class CheckpointStateOwner final : public checkpoint_runtime::StateOwner {
  public:
   /**
-   * @param config Exact runtime configuration, including nonnegative end_time_ns.
+   * @param config Runtime configuration without a scenario-duration limit.
    * @param publish Synchronous output boundary; it receives owning samples from
    *        one processed runtime boundary. It must not retain borrowed objects.
    * Construction processes time zero internally but publishes nothing.
-   * @throws std::invalid_argument for invalid end time or an empty publisher.
+   * @throws std::invalid_argument for an empty publisher.
    */
   CheckpointStateOwner(const nlohmann::json& config,
                        std::function<void(const std::vector<RuntimeOutput>&)> publish);
@@ -54,8 +54,7 @@ class CheckpointStateOwner final : public checkpoint_runtime::StateOwner {
    * Validate a continuation without mutating live state or publishing outputs.
    * @param payload Versioned Runtime checkpoint JSON.
    * @param target_epoch Strictly newer destination delivery epoch.
-   * @return Uninstalled candidate with whole-microsecond elapsed time within
-   *         the configured scenario endpoint.
+   * @return Uninstalled candidate with whole-microsecond elapsed time.
    * @throws std::invalid_argument for incompatible time, epoch, or payload.
    */
   std::unique_ptr<checkpoint_runtime::RestoreCandidate> prepare_restore(
@@ -66,7 +65,7 @@ class CheckpointStateOwner final : public checkpoint_runtime::StateOwner {
    * Advance one whole-microsecond elapsed boundary and publish its outputs.
    * @param t_us Monotonic elapsed scenario time in microseconds.
    * @throws std::logic_error before initial publication.
-   * @throws std::invalid_argument for backward, unrepresentable, or out-of-range time.
+   * @throws std::invalid_argument for backward or unrepresentable time.
    * Callback or Runtime failures may leave domain state partially advanced; the
    * participant must fence and require recovery before any further processing.
    */
@@ -76,7 +75,6 @@ class CheckpointStateOwner final : public checkpoint_runtime::StateOwner {
   Runtime runtime_;
   std::function<void(const std::vector<RuntimeOutput>&)> publish_;
   std::vector<RuntimeOutput> held_initial_;
-  std::int64_t end_time_ns_{};
   std::uint32_t epoch_{};
   std::uint64_t processed_t_us_{};
   bool initialization_attempted_{};

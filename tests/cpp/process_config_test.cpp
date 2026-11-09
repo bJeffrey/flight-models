@@ -49,9 +49,6 @@ int main(int argc, char** argv) {
   invalid_checkpoint["checkpoint"]["state_schema"] = "different-domain";
   reject(invalid_checkpoint);
   invalid_checkpoint = checkpoint_config;
-  invalid_checkpoint["end_time_ns"] = 400000001;
-  reject(invalid_checkpoint);
-  invalid_checkpoint = checkpoint_config;
   invalid_checkpoint["checkpoint"].erase("max_snapshot_bytes");
   reject(invalid_checkpoint);
   auto bad = valid; bad["scenario_epoch_unix_ns"] = std::numeric_limits<std::uint64_t>::max(); reject(bad);
@@ -67,8 +64,6 @@ int main(int argc, char** argv) {
   require(load(bad).at("profile_path") == (path.parent_path() / "profiles/example.json").string());
   bad = valid; bad["scenario_epoch_unix_ns"] = std::numeric_limits<std::int64_t>::max();
   bad["scenario_epoch_utc"] = "2262-04-11T23:47:16.854775807Z";
-  bool overflowed = false;
-  try { (void)load(bad); } catch (const std::overflow_error&) { overflowed = true; }
-  require(overflowed);
+  require(load(bad).at("scenario_epoch_unix_ns") == std::numeric_limits<std::int64_t>::max());
   std::filesystem::remove(path);
 }

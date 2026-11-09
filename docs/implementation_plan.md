@@ -1396,3 +1396,14 @@ The DIS receiving-code interoperability test uses the unchanged static
 retain historical codec provenance, but no SuperCell checkout, process or
 configuration is needed. The targeted Docker build and `dis-sensor-interop-test`
 pass; evidence is `logs/20261107/supercell-removal/interop.log`.
+
+## Authority-owned scenario duration (2026-11-08)
+
+The native runtime no longer accepts a global scenario endpoint. ai-bm-sim owns
+optional `maximum_simulation_s` and controls authoritative time advancement;
+services finish admitted work while paused and remain available until signalled.
+Per-call integration targets, collection intervals, transport timeouts and
+numeric overflow bounds retain their existing meanings. The
+[owning integration checkpoint](../../ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#operator-scenario-duration-and-test-separation-2026-11-08)
+records cross-repository wiring and acceptance; finite observation windows belong
+to system tests, not production configuration.

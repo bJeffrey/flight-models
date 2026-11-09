@@ -5,7 +5,6 @@
   "scenario_epoch_unix_ns": 1792800000000000000,
   "scenario_epoch_utc": "2026-10-24T00:00:00Z",
   "run_id": "flight-process-smoke",
-  "end_time_ns": 400000000,
   "limits": {
     "max_commands": 0,
     "max_waypoints": 0,

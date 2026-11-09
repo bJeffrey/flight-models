@@ -7,31 +7,10 @@
 namespace flight_models {
 namespace {
 
-std::int64_t configured_end_time_ns(const nlohmann::json& config) {
-  if (!config.is_object() || !config.contains("end_time_ns")) {
-    throw std::invalid_argument("checkpoint state owner requires configured end_time_ns");
-  }
-  const auto& value = config.at("end_time_ns");
-  if (value.is_number_unsigned()) {
-    const auto parsed = value.get<std::uint64_t>();
-    if (parsed > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-      throw std::invalid_argument("end_time_ns exceeds signed nanosecond range");
-    }
-    return static_cast<std::int64_t>(parsed);
-  }
-  if (!value.is_number_integer()) {
-    throw std::invalid_argument("end_time_ns must be an integer nanosecond boundary");
-  }
-  const auto parsed = value.get<std::int64_t>();
-  if (parsed < 0) throw std::invalid_argument("end_time_ns must be nonnegative");
-  return parsed;
-}
-
-std::int64_t elapsed_nanoseconds(std::uint64_t time_us, std::int64_t end_time_ns) {
+std::int64_t elapsed_nanoseconds(std::uint64_t time_us) {
   constexpr auto maximum_us = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max() / 1000);
   if (time_us > maximum_us) throw std::invalid_argument("elapsed microseconds exceed nanosecond range");
   const auto time_ns = static_cast<std::int64_t>(time_us * 1000);
-  if (time_ns > end_time_ns) throw std::invalid_argument("elapsed time exceeds configured end_time_ns");
   return time_ns;
 }
 
@@ -51,7 +30,7 @@ struct RuntimeRestoreCandidate final : checkpoint_runtime::RestoreCandidate {
 CheckpointStateOwner::CheckpointStateOwner(
     const nlohmann::json& config,
     std::function<void(const std::vector<RuntimeOutput>&)> publish)
-    : runtime_(config), publish_(std::move(publish)), end_time_ns_(configured_end_time_ns(config)) {
+    : runtime_(config), publish_(std::move(publish)) {
   if (!publish_) throw std::invalid_argument("checkpoint state owner requires an output publisher");
 
   // Runtime computes the initial sample now, but authority admission controls publication.
@@ -91,7 +70,7 @@ std::unique_ptr<checkpoint_runtime::RestoreCandidate> CheckpointStateOwner::prep
     throw std::invalid_argument("restore candidate must be initialized at a whole-microsecond boundary");
   }
   const auto time_us = static_cast<std::uint64_t>(time_ns / 1000);
-  static_cast<void>(elapsed_nanoseconds(time_us, end_time_ns_));
+  static_cast<void>(elapsed_nanoseconds(time_us));
   return std::make_unique<RuntimeRestoreCandidate>(this, std::move(prepared), target_epoch, time_us);
 }
 
@@ -113,7 +92,7 @@ void CheckpointStateOwner::apply_restore(
 void CheckpointStateOwner::advance_to(std::uint64_t time_us) {
   if (!initialized_) throw std::logic_error("cannot advance before initial output publication");
   if (time_us < processed_t_us_) throw std::invalid_argument("elapsed time cannot move backward");
-  const auto time_ns = elapsed_nanoseconds(time_us, end_time_ns_);
+  const auto time_ns = elapsed_nanoseconds(time_us);
 
   // Publish only after the runtime has produced the complete owning output batch.
   const auto outputs = runtime_.advance_to(time_ns);

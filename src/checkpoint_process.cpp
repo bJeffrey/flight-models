@@ -115,7 +115,6 @@ int run_checkpoint_process(const nlohmann::json& config) {
   const auto maximum_elapsed_ns = origin_ns > 0 ? std::numeric_limits<std::int64_t>::max() - origin_ns :
                                                  std::numeric_limits<std::int64_t>::max();
   const auto run_id = config.at("run_id").get<std::string>();
-  const auto end_ns = config.at("end_time_ns").get<std::int64_t>();
   runtime_support::SimulationClock clock(run_id, {origin_ns},
       config.at("transport").at("clock_replay_window"), maximum_elapsed_ns);
   RuntimeTransport transport(config);
@@ -198,7 +197,6 @@ int run_checkpoint_process(const nlohmann::json& config) {
     } else {
       participant.handle_tick({boundary(tick), tick.paused(), tick.advances_time()});
     }
-    if (*elapsed_ns == end_ns) break;
   }
   transport.flush();
   std::cout << "flight-models stopped dis=" << dis_count << " prd=" << prd_count << std::endl;
