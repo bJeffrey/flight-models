@@ -13,14 +13,15 @@ owns service boundaries and transport ownership; its [shared bus and timing
 decision](/home/jeffs/git/ai-bm-sim/docs/architecture/ecosystem_message_architecture.md#shared-buses-and-flight-timing-2026-10-21)
 records the current NATS and simulation-clock contract. The fresh-run runtime and
 [bounded default startup](../../ai-bm-sim/docs/development_plans/foundation_roadmap/runtime_messaging_and_replay_handling.md#bounded-default-cutover-and-contract-disposition-2026-11-02)
-for the four-sensor/one-AST 1x workflow is accepted with explicit SuperCell
-rollback. No further flight-models migration slice is identified for that
+for the four-sensor/one-AST 1x workflow is accepted. SuperCell was removed on
+2026-11-07; `last-supercell-supported-2026-11-07` is historical reference only.
+No further flight-models migration slice is identified for that
 accepted workflow; cross-repository status belongs to the master plan. Broader
 promoted policy/route and
 operational control/emitter qualification remains open; it is not claimed by that
 backend cutover. Operator-GUI integration, including coherent live rewind/restore,
 remains independent follow-up work and is not a gate for replacing the motion and
-truth behavior SuperCell currently supplies.
+truth behavior previously supplied by SuperCell.
 
 The first FM-CONTRACT-1 slice adds the [state/time contract](state_time_contract.md),
 [existing adapter inventory](adapter_contract.md) and executable C++ contract/UCI
@@ -34,9 +35,11 @@ currently supplied by SuperCell. Flight-models owns its continuation API;
 ai-bm-sim owns distributed coordination and the GUI. The
 [durable payload and prepared-candidate checkpoint](implementation_plan.md#durable-runtime-payload-and-prepared-candidate-2026-11-02)
 passes local continuation tests. The [native process binding](implementation_plan.md#native-process-checkpoint-and-restored-clock-boundary-2026-11-02)
-now also passes real NATS/two-ASB capture, restore and cold-restart recovery.
-Generated ecosystem checkpoint wiring and the remaining service adapters are
-still required before coordinated live seek; this remains independent follow-up.
+passes real NATS/two-ASB capture, restore and cold-restart recovery. Recording
+creation/catalog and one-shot map replay with return to Live are implemented and
+operator-tested. Persistent playback control, generated distributed checkpoint
+cuts and remaining service adapters remain open; live-world restore is separate
+follow-up work.
 
 The [bounded motion/input contract](motion_input_contract.md) and typed profile
 loader establish the local motion prerequisites. Remaining operational
