@@ -155,7 +155,7 @@ int run_checkpoint_process(const nlohmann::json& config) {
           request.required_service_ids.end()) continue;
       cr::Response response;
       if (request.phase == cr::Phase::delivery_receipts) {
-        response = participant.delivery_receipts(request, {transport.dis_delivery_receipt()});
+        response = participant.delivery_receipts(request, transport.delivery_receipts());
       } else if (!owner.initialized() && !participant.recovery_required()) {
         response.request        = request;
         response.identity       = identity;

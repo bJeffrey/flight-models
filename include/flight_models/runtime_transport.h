@@ -66,9 +66,12 @@ class RuntimeTransport {
    * @throws std::runtime_error for publication or flush failure.
    */
   void publish_checkpoint_response(const std::vector<std::uint8_t>& payload);
-  /** @return Current checkpoint-only DIS receipt, or an empty receipt when disabled. */
-  checkpoint_runtime::DeliveryReceipt dis_delivery_receipt() const;
-  /** Start a new DIS measurement window after an accepted restored boundary. */
+  /** @return DIS followed by configured ownship PRD summaries sorted by stream ID.
+   *         PRD counts include only ASB +OK acknowledgements; an empty vector
+   *         is returned when checkpoint transport is disabled.
+   */
+  std::vector<checkpoint_runtime::DeliveryReceipt> delivery_receipts() const;
+  /** Start new DIS and ownship PRD measurement windows after accepted restore. */
   void reset_delivery_receipts();
   /** Send outputs through per-entity DIS or PRD adapters.
    * PRD pending message and byte limits apply across all configured ASB peers;

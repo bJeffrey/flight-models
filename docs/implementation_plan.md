@@ -1405,6 +1405,23 @@ plan owns coordinated topology/GUI restore, continuation of other stateful
 participants, and arbitrary-time recorded-input replay; a clock jump is not
 restoration. Keep that sequence as nonblocking follow-up.
 
+#### Ownship PRD receipt extension (2026-11-10)
+
+The same checkpoint query now includes a zero-initialized receipt for every
+configured PRD route, identified by `prd/<platform_system_id>/<topic>`. The
+transport retains the exact serialized PRD bytes only while their OWP PUB is
+pending and fingerprints them on `+OK`, before releasing the pending message
+and byte reservation. Receipt vectors return DIS first, then PRD streams sorted
+by identity; the accepted restored-clock boundary resets every stream. The
+process smoke checks both configured PRD routes, exact source JSON fingerprints,
+and repeated stable snapshots.
+
+Validation: `./test_process.sh` passed in the maintained Release/Werror process
+fixture at
+[`logs/20261110/process-smoke-12094`](../logs/20261110/process-smoke-12094/).
+The checkpoint-disabled publish path does not retain receipt payloads or hash
+PRD bytes. ASB `+OK` remains admission evidence, not downstream processing.
+
 ### Retired backend fixture dependency removal (2026-11-07)
 
 The DIS receiving-code interoperability test uses the unchanged static

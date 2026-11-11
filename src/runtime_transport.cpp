@@ -91,9 +91,9 @@ std::string ordered_event_subject(const std::string& clock, const std::string& r
 }  // namespace
 
 struct RuntimeTransport::Impl {
-  struct ReportRoute { std::string url, topic; };
+  struct ReportRoute { std::string url, topic, stream_id; };
   struct Peer : std::enable_shared_from_this<Peer> {
-    struct Item { std::string topic, payload; std::size_t reserved_bytes{}; };
+    struct Item { std::string topic, payload, receipt_stream; std::size_t reserved_bytes{}; };
     Impl& owner;
     std::string url, service;
     asio::strand<asio::io_context::executor_type> strand;
@@ -103,7 +103,11 @@ struct RuntimeTransport::Impl {
     asio::steady_timer write_timer;
     beast::flat_buffer read_buffer;
     std::deque<Item> unsent;
-    struct PendingAck { std::size_t bytes; std::chrono::steady_clock::time_point sent; };
+    struct PendingAck {
+      std::size_t bytes;
+      std::chrono::steady_clock::time_point sent;
+      std::string receipt_stream, receipt_payload;
+    };
     std::deque<PendingAck> awaiting;
     std::string write_buffer;
     Address address;
@@ -182,6 +186,7 @@ struct RuntimeTransport::Impl {
         if (frame.rfind("+OK", 0) == 0 || frame.rfind("-ERR", 0) == 0) {
           if (self->awaiting.empty()) return self->owner.fail("unexpected OWP ACK " + self->url);
           if (frame.rfind("+OK", 0) != 0) return self->owner.fail("OWP PUB " + self->url + ": " + frame);
+          self->owner.observe_prd(self->awaiting.front());
           self->owner.release(self->awaiting.front().bytes);
           self->awaiting.pop_front();
           self->arm_ack_deadline();
@@ -212,7 +217,12 @@ struct RuntimeTransport::Impl {
       auto item = std::move(unsent.front());
       unsent.pop_front();
       write_buffer = "PUB " + item.topic + " " + item.payload;
-      awaiting.push_back({item.reserved_bytes, std::chrono::steady_clock::now()});
+      PendingAck ack{item.reserved_bytes, std::chrono::steady_clock::now(), {}, {}};
+      if (!item.receipt_stream.empty()) {
+        ack.receipt_stream = std::move(item.receipt_stream);
+        ack.receipt_payload = std::move(item.payload);
+      }
+      awaiting.push_back(std::move(ack));
       writing = true;
       write_timer.expires_after(owner.op_timeout);
       write_timer.async_wait(asio::bind_executor(strand, [self=shared_from_this()](beast::error_code ec) {
@@ -268,7 +278,13 @@ struct RuntimeTransport::Impl {
       const auto id = required_string(entity, "id");
       const auto& prd = entity.at("prd");
       if (prd.is_null()) continue;
-      reports.emplace(id, ReportRoute{required_string(prd, "asb_url"), required_string(prd, "topic")});
+      const auto topic = required_string(prd, "topic");
+      const auto platform_id = required_string(prd, "platform_system_id");
+      const auto stream_id = "prd/" + platform_id + "/" + topic;
+      reports.emplace(id, ReportRoute{required_string(prd, "asb_url"), topic, stream_id});
+      if (dis_receipts)
+        prd_receipts.emplace(stream_id,
+            std::make_unique<checkpoint_runtime::DeliveryReceiptAccumulator>(stream_id));
     }
   }
   ~Impl() { stop(); }
@@ -278,6 +294,11 @@ struct RuntimeTransport::Impl {
     cv.notify_all();
   }
   void signal() { std::lock_guard<std::mutex> lock(mutex); cv.notify_all(); }
+  void observe_prd(const Peer::PendingAck& ack) {
+    if (ack.receipt_stream.empty()) return;
+    std::lock_guard<std::mutex> lock(receipt_mutex);
+    prd_receipts.at(ack.receipt_stream)->observe(ack.receipt_payload);
+  }
   void check_failure() {
     // Polling status avoids connection callbacks outliving this owner at shutdown.
     if (connection && natsConnection_Status(connection) != NATS_CONN_STATUS_CONNECTED)
@@ -321,6 +342,8 @@ struct RuntimeTransport::Impl {
   std::size_t ready_peers{};
   std::atomic<std::size_t> pending_messages{}, pending_bytes{};
   std::unique_ptr<checkpoint_runtime::DeliveryReceiptAccumulator> dis_receipts;
+  std::map<std::string, std::unique_ptr<checkpoint_runtime::DeliveryReceiptAccumulator>> prd_receipts;
+  mutable std::mutex receipt_mutex;
   bool reserve(std::size_t bytes) {
     auto count = pending_messages.load();
     do { if (count >= max_messages) return false; }
@@ -463,13 +486,27 @@ void RuntimeTransport::publish_checkpoint_response(const std::vector<std::uint8_
   p.check_failure();
 }
 
-checkpoint_runtime::DeliveryReceipt RuntimeTransport::dis_delivery_receipt() const {
-  if (!impl_->dis_receipts) return {};
-  return impl_->dis_receipts->snapshot();
+std::vector<checkpoint_runtime::DeliveryReceipt> RuntimeTransport::delivery_receipts() const {
+  std::vector<checkpoint_runtime::DeliveryReceipt> receipts;
+  if (!impl_->dis_receipts) return receipts;
+
+  std::lock_guard<std::mutex> lock(impl_->receipt_mutex);
+  receipts.push_back(impl_->dis_receipts->snapshot());
+  for (const auto& [stream_id, accumulator] : impl_->prd_receipts) {
+    (void)stream_id;
+    receipts.push_back(accumulator->snapshot());
+  }
+  return receipts;
 }
 
 void RuntimeTransport::reset_delivery_receipts() {
-  if (impl_->dis_receipts) impl_->dis_receipts->reset();
+  if (!impl_->dis_receipts) return;
+  std::lock_guard<std::mutex> lock(impl_->receipt_mutex);
+  impl_->dis_receipts->reset();
+  for (const auto& [stream_id, accumulator] : impl_->prd_receipts) {
+    (void)stream_id;
+    accumulator->reset();
+  }
 }
 
 void RuntimeTransport::publish(const std::vector<RuntimeOutput>& outputs) {
@@ -481,6 +518,7 @@ void RuntimeTransport::publish(const std::vector<RuntimeOutput>& outputs) {
       if (sent != output.dis.size()) throw std::runtime_error("short DIS UDP send to " + p.host);
       if (p.dis_receipts) {
         // Count only complete local UDP sends, preserving the exact OpenDIS payload bytes.
+        std::lock_guard<std::mutex> lock(p.receipt_mutex);
         p.dis_receipts->observe(std::string_view(
             reinterpret_cast<const char*>(output.dis.data()), output.dis.size()));
       }
@@ -488,7 +526,11 @@ void RuntimeTransport::publish(const std::vector<RuntimeOutput>& outputs) {
     }
     const auto route = p.reports.find(output.entity_id);
     if (route == p.reports.end()) throw std::runtime_error("PRD output has no configured route for " + output.entity_id);
-    p.peers.at(route->second.url)->enqueue({route->second.topic, output.prd.dump()});
+    auto payload = output.prd.dump();
+    std::string receipt_stream;
+    if (p.dis_receipts) receipt_stream = route->second.stream_id;
+    p.peers.at(route->second.url)->enqueue(
+        {route->second.topic, std::move(payload), std::move(receipt_stream)});
   }
   p.check_failure();
 }

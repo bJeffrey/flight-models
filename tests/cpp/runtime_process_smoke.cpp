@@ -364,16 +364,27 @@ int main(int argc, char** argv) {
     };
     std::vector<std::vector<std::uint8_t>> expected_dis;
     std::vector<std::string> checkpoint_prds;
+    std::map<std::string, std::vector<std::string>> checkpoint_prds_by_stream;
     auto collect_checkpoint = [&](const auto& outputs) {
       for (const auto& output : outputs) {
         if (!output.dis.empty()) expected_dis.push_back(output.dis);
-        if (!output.prd.is_null()) checkpoint_prds.push_back(output.prd.dump());
+        if (output.prd.is_null()) continue;
+        auto payload = output.prd.dump();
+        checkpoint_prds.push_back(payload);
+        for (const auto& entity : fixture.at("entities")) {
+          if (entity.at("id") != output.entity_id || entity.at("prd").is_null()) continue;
+          const auto stream_id = "prd/" + entity.at("prd").at("platform_system_id").get<std::string>() +
+                                 "/" + entity.at("prd").at("topic").get<std::string>();
+          checkpoint_prds_by_stream[stream_id].push_back(std::move(payload));
+          break;
+        }
       }
     };
     flight_models::Runtime checkpoint_reference(fixture);
     collect_checkpoint(checkpoint_reference.advance_to(0));
     collect_checkpoint(checkpoint_reference.advance_to(100000000));
     collect_checkpoint(checkpoint_reference.advance_to(200000000));
+    const auto initialized_prds_by_stream = checkpoint_prds_by_stream;
     const auto saved_payload = checkpoint_reference.encode_checkpoint();
     collect_checkpoint(checkpoint_reference.advance_to(300000000));
     checkpoint_reference = checkpoint_reference.prepare_restore(saved_payload);
@@ -385,11 +396,27 @@ int main(int argc, char** argv) {
     auto receipt_request = checkpoint_request("receipts-before-init", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
         rlbm::proto::CHECKPOINT_PHASE_DELIVERY_RECEIPTS, 0, 0, 0, 0);
     auto receipt_response = exchange(receipt_request, true);
-    require(receipt_response.delivery_receipts_size() == 1 &&
+    std::vector<std::string> ownship_prd_streams;
+    for (const auto& entity : fixture.at("entities")) {
+      if (entity.at("prd").is_null()) continue;
+      ownship_prd_streams.push_back("prd/" +
+          entity.at("prd").at("platform_system_id").get<std::string>() + "/" +
+          entity.at("prd").at("topic").get<std::string>());
+    }
+    std::sort(ownship_prd_streams.begin(), ownship_prd_streams.end());
+    require(receipt_response.delivery_receipts_size() ==
+                static_cast<int>(ownship_prd_streams.size() + 1) &&
             receipt_response.delivery_receipts(0).stream_id() == "dis" &&
             receipt_response.delivery_receipts(0).message_count() == 0 &&
             receipt_response.delivery_receipts(0).payload_digest() == std::string(64, '0'),
-            "pre-initialization DIS receipt was not the empty stream summary");
+            "pre-initialization delivery receipts were not empty stream summaries: " +
+                receipt_response.ShortDebugString());
+    for (std::size_t index = 0; index < ownship_prd_streams.size(); ++index) {
+      const auto& receipt = receipt_response.delivery_receipts(static_cast<int>(index + 1));
+      require(receipt.stream_id() == ownship_prd_streams[index] && receipt.message_count() == 0 &&
+                  receipt.payload_digest() == std::string(64, '0'),
+              "pre-initialization ownship PRD receipt was not empty");
+    }
     exchange(checkpoint_request("early", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
              rlbm::proto::CHECKPOINT_PHASE_FENCE, 0, 0, 0, 0), false);
     publish_tick(nc.connection, run, 0, 0, 0, false, true);
@@ -408,17 +435,34 @@ int main(int argc, char** argv) {
       expected_receipt.observe(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
     const auto expected_summary = expected_receipt.snapshot();
-    require(receipt_response.delivery_receipts_size() == 1 &&
+    require(receipt_response.delivery_receipts_size() ==
+                static_cast<int>(ownship_prd_streams.size() + 1) &&
             receipt_response.delivery_receipts(0).stream_id() == expected_summary.stream_id &&
             receipt_response.delivery_receipts(0).message_count() == expected_summary.message_count &&
             receipt_response.delivery_receipts(0).payload_digest() == expected_summary.payload_digest,
-            "checkpoint DIS receipt differed from the successfully sent source datagrams");
+            "checkpoint receipts differed from successfully admitted DIS and acknowledged PRD bytes");
+    for (std::size_t index = 0; index < ownship_prd_streams.size(); ++index) {
+      checkpoint_runtime::DeliveryReceiptAccumulator expected_prd(ownship_prd_streams[index]);
+      const auto expected_payloads = initialized_prds_by_stream.find(ownship_prd_streams[index]);
+      if (expected_payloads != initialized_prds_by_stream.end()) {
+        for (const auto& payload : expected_payloads->second) expected_prd.observe(payload);
+      }
+      const auto expected_prd_summary = expected_prd.snapshot();
+      const auto& receipt = receipt_response.delivery_receipts(static_cast<int>(index + 1));
+      require(receipt.stream_id() == expected_prd_summary.stream_id &&
+                  receipt.message_count() == expected_prd_summary.message_count &&
+                  receipt.payload_digest() == expected_prd_summary.payload_digest,
+              "checkpoint PRD receipt differed from acknowledged exact source bytes");
+    }
     receipt_request.set_operation_id("receipts-after-init-again");
     const auto repeated_receipt = exchange(receipt_request, true);
-    require(repeated_receipt.delivery_receipts_size() == 1 &&
-            repeated_receipt.delivery_receipts(0).SerializeAsString() ==
-                receipt_response.delivery_receipts(0).SerializeAsString(),
-            "fresh DIS receipt query changed the unchanged delivery summary");
+    require(repeated_receipt.delivery_receipts_size() == receipt_response.delivery_receipts_size(),
+            "fresh delivery receipt query changed the configured stream set");
+    for (int index = 0; index < receipt_response.delivery_receipts_size(); ++index) {
+      require(repeated_receipt.delivery_receipts(index).SerializeAsString() ==
+                  receipt_response.delivery_receipts(index).SerializeAsString(),
+              "fresh receipt query changed an unchanged delivery summary");
+    }
     capture_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_SNAPSHOT);
     const auto captured = exchange(capture_request, true);
     require(captured.payload_size() > 0 && captured.payload_sha256().size() == 64 &&
