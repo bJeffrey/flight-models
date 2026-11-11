@@ -71,6 +71,12 @@ std::vector<std::uint8_t> response_bytes(const cr::Response& response, const cr:
   wire.set_payload_size(response.payload_size);
   wire.set_bundle_size(response.bundle_size);
   wire.set_capacity_blocked(response.capacity_blocked);
+  for (const auto& receipt : response.delivery_receipts) {
+    auto* output = wire.add_delivery_receipts();
+    output->set_stream_id(receipt.stream_id);
+    output->set_message_count(receipt.message_count);
+    output->set_payload_digest(receipt.payload_digest);
+  }
   for (const auto& position : request.input_positions) {
     auto* output = wire.add_input_positions();
     output->set_source_id(position.first);
@@ -148,7 +154,9 @@ int run_checkpoint_process(const nlohmann::json& config) {
       if (std::find(request.required_service_ids.begin(), request.required_service_ids.end(), identity.service_id) ==
           request.required_service_ids.end()) continue;
       cr::Response response;
-      if (!owner.initialized() && !participant.recovery_required()) {
+      if (request.phase == cr::Phase::delivery_receipts) {
+        response = participant.delivery_receipts(request, {transport.dis_delivery_receipt()});
+      } else if (!owner.initialized() && !participant.recovery_required()) {
         response.request        = request;
         response.identity       = identity;
         response.failure_reason = "initial authoritative outputs have not been admitted";
@@ -183,6 +191,7 @@ int run_checkpoint_process(const nlohmann::json& config) {
       participant.handle_tick({boundary(tick), true, false});
       try { clock.restore_boundary(tick); }
       catch (...) { participant.require_recovery(); throw; }
+      transport.reset_delivery_receipts();
       continue;
     }
 

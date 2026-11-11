@@ -15,6 +15,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -244,6 +245,7 @@ struct RuntimeTransport::Impl {
     const auto& t = config.at("transport");
     nats_url = required_string(t, "nats_url"); clock_subject = required_string(t, "clock_subject");
     if (config.contains("checkpoint")) {
+      dis_receipts = std::make_unique<checkpoint_runtime::DeliveryReceiptAccumulator>("dis");
       const auto& checkpoint = config.at("checkpoint");
       checkpoint_request_subject = required_string(checkpoint, "request_subject");
       checkpoint_response_subject = required_string(checkpoint, "response_subject");
@@ -318,6 +320,7 @@ struct RuntimeTransport::Impl {
   bool opened{}, stopped{};
   std::size_t ready_peers{};
   std::atomic<std::size_t> pending_messages{}, pending_bytes{};
+  std::unique_ptr<checkpoint_runtime::DeliveryReceiptAccumulator> dis_receipts;
   bool reserve(std::size_t bytes) {
     auto count = pending_messages.load();
     do { if (count >= max_messages) return false; }
@@ -460,6 +463,15 @@ void RuntimeTransport::publish_checkpoint_response(const std::vector<std::uint8_
   p.check_failure();
 }
 
+checkpoint_runtime::DeliveryReceipt RuntimeTransport::dis_delivery_receipt() const {
+  if (!impl_->dis_receipts) return {};
+  return impl_->dis_receipts->snapshot();
+}
+
+void RuntimeTransport::reset_delivery_receipts() {
+  if (impl_->dis_receipts) impl_->dis_receipts->reset();
+}
+
 void RuntimeTransport::publish(const std::vector<RuntimeOutput>& outputs) {
   auto& p = *impl_; p.check_failure();
   if (!p.opened) throw std::logic_error("runtime transport is not open");
@@ -467,6 +479,11 @@ void RuntimeTransport::publish(const std::vector<RuntimeOutput>& outputs) {
     if (output.kind == SampleKind::physical) {
       const auto sent = p.udp.send_to(asio::buffer(output.dis), p.dis_endpoint);
       if (sent != output.dis.size()) throw std::runtime_error("short DIS UDP send to " + p.host);
+      if (p.dis_receipts) {
+        // Count only complete local UDP sends, preserving the exact OpenDIS payload bytes.
+        p.dis_receipts->observe(std::string_view(
+            reinterpret_cast<const char*>(output.dis.data()), output.dis.size()));
+      }
       continue;
     }
     const auto route = p.reports.find(output.entity_id);

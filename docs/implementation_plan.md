@@ -1382,6 +1382,22 @@ seek/checkpoint/recovery/playback is not a gate for replacing the motion/truth
 behavior currently supplied by SuperCell. Do not claim global target capability
 or broad performance qualification from this bounded migration evidence.
 
+### Checkpoint-only DIS delivery receipts (2026-11-09)
+
+With the optional checkpoint profile, the process now answers the read-only
+`DELIVERY_RECEIPTS` phase with a fresh count and commutative SHA-256 sum over
+successfully sent encoded DIS datagrams. Receipt queries are served before domain
+initialization and bypass FENCE handling; the counter resets only after the
+paused restored-clock boundary is accepted. The process smoke compares the
+receipt against the expected encoded source bytes and checks repeated queries.
+
+This provides transport evidence only. DIS remains the existing OpenDIS payload
+without epoch framing, and UDP receipt does not establish downstream processing.
+The causal-cut/input-cursor gap remains; this does not enable full rewind or
+distributed restore. Validation: `./test_process.sh logs/20261109/dis-receipts-smoke-final`
+(Release/Werror build, 14 CTests and
+real process smoke).
+
 The four-sensor/one-AST 1x motion/truth workflow has no further flight-models
 migration step identified here. Cross-repository acceptance and any future scope
 are tracked in the ai-bm-sim master plan. Separately, the ai-bm-sim runtime/replay

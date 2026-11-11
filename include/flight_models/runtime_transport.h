@@ -2,6 +2,7 @@
 #pragma once
 
 #include "flight_models/runtime.h"
+#include "checkpoint_runtime/delivery_receipt.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -65,6 +66,10 @@ class RuntimeTransport {
    * @throws std::runtime_error for publication or flush failure.
    */
   void publish_checkpoint_response(const std::vector<std::uint8_t>& payload);
+  /** @return Current checkpoint-only DIS receipt, or an empty receipt when disabled. */
+  checkpoint_runtime::DeliveryReceipt dis_delivery_receipt() const;
+  /** Start a new DIS measurement window after an accepted restored boundary. */
+  void reset_delivery_receipts();
   /** Send outputs through per-entity DIS or PRD adapters.
    * PRD pending message and byte limits apply across all configured ASB peers;
    * capacity is reserved before posting payloads to the IO thread. Writes are

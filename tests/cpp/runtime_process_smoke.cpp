@@ -4,6 +4,7 @@
 #include "flight_models/runtime.h"
 #include "runtime_control.pb.h"
 #include "checkpoint_runtime/store.hpp"
+#include "checkpoint_runtime/delivery_receipt.hpp"
 #include <algorithm>
 #include "sim_time.pb.h"
 #include <nats/nats.h>
@@ -21,6 +22,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
@@ -380,6 +382,14 @@ int main(int argc, char** argv) {
 
     const auto checkpoint_log = artifacts + "/flight-process-checkpoint.log";
     launch_checkpoint(checkpoint_log, false);
+    auto receipt_request = checkpoint_request("receipts-before-init", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
+        rlbm::proto::CHECKPOINT_PHASE_DELIVERY_RECEIPTS, 0, 0, 0, 0);
+    auto receipt_response = exchange(receipt_request, true);
+    require(receipt_response.delivery_receipts_size() == 1 &&
+            receipt_response.delivery_receipts(0).stream_id() == "dis" &&
+            receipt_response.delivery_receipts(0).message_count() == 0 &&
+            receipt_response.delivery_receipts(0).payload_digest() == std::string(64, '0'),
+            "pre-initialization DIS receipt was not the empty stream summary");
     exchange(checkpoint_request("early", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
              rlbm::proto::CHECKPOINT_PHASE_FENCE, 0, 0, 0, 0), false);
     publish_tick(nc.connection, run, 0, 0, 0, false, true);
@@ -388,6 +398,27 @@ int main(int argc, char** argv) {
     auto capture_request = checkpoint_request("capture", rlbm::proto::CHECKPOINT_OPERATION_CAPTURE,
         rlbm::proto::CHECKPOINT_PHASE_FENCE, 2, 200000, 0, 0);
     exchange(capture_request, true);
+    receipt_request.set_operation_id("receipts-after-init");
+    receipt_request.mutable_source()->set_tick_id(2);
+    receipt_request.mutable_source()->set_t_us(200000);
+    receipt_response = exchange(receipt_request, true);
+    checkpoint_runtime::DeliveryReceiptAccumulator expected_receipt("dis");
+    for (std::size_t index = 0; index < 9; ++index) {
+      const auto& bytes = expected_dis.at(index);
+      expected_receipt.observe(std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+    }
+    const auto expected_summary = expected_receipt.snapshot();
+    require(receipt_response.delivery_receipts_size() == 1 &&
+            receipt_response.delivery_receipts(0).stream_id() == expected_summary.stream_id &&
+            receipt_response.delivery_receipts(0).message_count() == expected_summary.message_count &&
+            receipt_response.delivery_receipts(0).payload_digest() == expected_summary.payload_digest,
+            "checkpoint DIS receipt differed from the successfully sent source datagrams");
+    receipt_request.set_operation_id("receipts-after-init-again");
+    const auto repeated_receipt = exchange(receipt_request, true);
+    require(repeated_receipt.delivery_receipts_size() == 1 &&
+            repeated_receipt.delivery_receipts(0).SerializeAsString() ==
+                receipt_response.delivery_receipts(0).SerializeAsString(),
+            "fresh DIS receipt query changed the unchanged delivery summary");
     capture_request.set_phase(rlbm::proto::CHECKPOINT_PHASE_SNAPSHOT);
     const auto captured = exchange(capture_request, true);
     require(captured.payload_size() > 0 && captured.payload_sha256().size() == 64 &&
